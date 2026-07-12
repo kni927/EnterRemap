@@ -4,8 +4,8 @@
 set -e
 
 APP_NAME="EnterRemap"
-VERSION="1.4.3"
-BUILD_NUMBER="9"
+VERSION="1.5.0"
+BUILD_NUMBER="10"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$REPO_DIR/build"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"

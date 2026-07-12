@@ -12,18 +12,22 @@ input.
 - **Shift+Enter** → unchanged (newline)
 - **Enter while composing with an IME** → unchanged (lets the IME confirm)
 
-## Target apps
+## Target apps (v1.5)
 
-Frontmost app is checked against a bundle ID allowlist.
+Frontmost app is checked against a bundle ID allowlist. The allowlist
+persists in `UserDefaults` and can be toggled at runtime — no rebuild —
+from the menu bar's **Target Apps...** window:
 
-| App | Bundle ID |
-|---|---|
-| Claude | `com.anthropic.claudefordesktop` |
-| ChatGPT (unified, post-Codex) | `com.openai.codex` |
-| ChatGPT Classic | `com.openai.chat` |
-| Gemini | `com.google.GeminiMacOS` |
+| Preset | Bundle ID | Default |
+|---|---|---|
+| Claude | `com.anthropic.claudefordesktop` | ON |
+| ChatGPT (unified, post-Codex) | `com.openai.codex` | ON |
+| ChatGPT Classic | `com.openai.chat` | ON |
+| Gemini | `com.google.GeminiMacOS` | ON |
+| Discord | `com.hnc.Discord` | OFF |
 
-Add an app by adding one line to `ALLOWED_BUNDLE_IDS` in [main.swift](main.swift).
+Apps not in the preset list can be added from the same window's manual
+bundle-ID field — checking it enables the remap immediately.
 
 Browser-based web apps are out of scope — covered separately by browser
 extensions (e.g. "Chat AI Ctrl+Enter Sender").
@@ -41,8 +45,9 @@ an always-visible menu bar status item instead:
   disabled and the existing auto-re-enable logic failed to recover it
   (needs a restart)
 
-Click the icon for a menu with the current state, "Pause/Resume", and
-"Quit". While paused, Enter/Cmd+Enter pass through completely untouched —
+Click the icon for a menu with the current state, "Target Apps...",
+"Pause/Resume", and "Quit". While paused, Enter/Cmd+Enter pass through
+completely untouched —
 this skips the single-line-field check and all IME logic too for any
 target-app keystroke, on the principle that doing nothing beats guessing
 wrong while the user has explicitly asked the tool to stand down.
@@ -130,6 +135,9 @@ tool exists rather than reusing the article's code as-is):
   Phase 5)
 - AXRole-gated remap so Enter behaves correctly in single-line fields
   like a Save As dialog's filename box (Phase 6)
+- Target apps are editable at runtime (UserDefaults-backed allowlist,
+  a "Target Apps..." window with checkboxes and a manual bundle-ID
+  field) instead of a hardcoded list requiring a rebuild (Phase 7)
 
 ## Known Issues
 

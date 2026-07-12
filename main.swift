@@ -7,14 +7,56 @@ import CoreGraphics
 
 // MARK: - Configuration
 
-// Allowed target apps (bundle IDs). Single source of truth —
-// add a new bundle ID here to support another app.
-let ALLOWED_BUNDLE_IDS: Set<String> = [
-    "com.anthropic.claudefordesktop", // Claude
-    "com.openai.codex",               // ChatGPT (unified app, post-Codex merge)
-    "com.openai.chat",                // ChatGPT Classic (legacy)
-    "com.google.GeminiMacOS",         // Gemini
+// Preset target apps offered as checkboxes in the "Target Apps..." window.
+// Adding a preset here only changes what's offered — it doesn't enable it;
+// see PRESET_ENABLED_BY_DEFAULT below for what ships on.
+let PRESET_TARGET_APPS: [(name: String, bundleID: String)] = [
+    ("Claude", "com.anthropic.claudefordesktop"),
+    ("ChatGPT", "com.openai.codex"),               // unified app, post-Codex merge
+    ("ChatGPT Classic", "com.openai.chat"),        // legacy
+    ("Gemini", "com.google.GeminiMacOS"),
+    ("Discord", "com.hnc.Discord"),
 ]
+
+// Seeded into UserDefaults on first launch only. Discord ships off —
+// the user turns it on explicitly from the Target Apps window.
+let PRESET_ENABLED_BY_DEFAULT: Set<String> = [
+    "com.anthropic.claudefordesktop",
+    "com.openai.codex",
+    "com.openai.chat",
+    "com.google.GeminiMacOS",
+]
+
+let ALLOWED_BUNDLE_IDS_KEY = "AllowedBundleIDs"
+let CUSTOM_BUNDLE_IDS_KEY = "CustomBundleIDs"
+
+func loadAllowedBundleIDs() -> Set<String> {
+    if let saved = UserDefaults.standard.array(forKey: ALLOWED_BUNDLE_IDS_KEY) as? [String] {
+        return Set(saved)
+    }
+    UserDefaults.standard.set(Array(PRESET_ENABLED_BY_DEFAULT), forKey: ALLOWED_BUNDLE_IDS_KEY)
+    return PRESET_ENABLED_BY_DEFAULT
+}
+
+func saveAllowedBundleIDs() {
+    UserDefaults.standard.set(Array(ALLOWED_BUNDLE_IDS), forKey: ALLOWED_BUNDLE_IDS_KEY)
+}
+
+// Bundle IDs the user typed into the manual-add field, kept separately
+// from ALLOWED_BUNDLE_IDS so an unchecked custom entry still reappears
+// (unchecked) the next time the Target Apps window opens.
+func loadCustomBundleIDs() -> [String] {
+    UserDefaults.standard.array(forKey: CUSTOM_BUNDLE_IDS_KEY) as? [String] ?? []
+}
+
+func saveCustomBundleIDs(_ ids: [String]) {
+    UserDefaults.standard.set(ids, forKey: CUSTOM_BUNDLE_IDS_KEY)
+}
+
+// Allowed target apps (bundle IDs). Loaded once at launch; the Target
+// Apps window mutates this directly and persists it via
+// saveAllowedBundleIDs() — everywhere else still just reads it as a Set.
+var ALLOWED_BUNDLE_IDS: Set<String> = loadAllowedBundleIDs()
 
 let KEYCODE_ENTER: CGKeyCode = 36
 let KEYCODE_BACKSPACE: CGKeyCode = 51
@@ -165,10 +207,133 @@ func menuItemTitle(_ text: String) -> NSAttributedString {
     ])
 }
 
+// MARK: - Target apps settings window
+// A plain NSWindow with checkbox rows (no NSTableView needed for ~6
+// rows) plus a manual bundle-ID entry field. Toggling a checkbox writes
+// straight through to ALLOWED_BUNDLE_IDS and UserDefaults — no restart.
+final class TargetAppsWindowController: NSObject {
+    private var window: NSWindow?
+    private var checkboxStack: NSStackView?
+    private var addField: NSTextField?
+
+    func show() {
+        if let window = window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let checkboxStack = NSStackView()
+        checkboxStack.orientation = .vertical
+        checkboxStack.alignment = .leading
+        checkboxStack.spacing = 6
+        self.checkboxStack = checkboxStack
+
+        let separator = NSBox()
+        separator.boxType = .separator
+
+        let addField = NSTextField()
+        addField.placeholderString = "com.example.app (bundle ID)"
+        addField.target = self
+        addField.action = #selector(addCustomBundleID)
+        addField.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        self.addField = addField
+
+        let addButton = NSButton(frame: .zero)
+        addButton.title = "Add"
+        addButton.bezelStyle = .rounded
+        addButton.target = self
+        addButton.action = #selector(addCustomBundleID)
+
+        let addRow = NSStackView(views: [addField, addButton])
+        addRow.orientation = .horizontal
+        addRow.spacing = 6
+
+        let container = NSStackView(views: [checkboxStack, separator, addRow])
+        container.orientation = .vertical
+        container.alignment = .leading
+        container.spacing = 12
+        container.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        separator.widthAnchor.constraint(equalTo: container.widthAnchor).isActive = true
+
+        rebuildCheckboxes()
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 260),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false)
+        window.title = "Target Apps"
+        window.isReleasedWhenClosed = false
+        window.contentView = container
+        window.center()
+        self.window = window
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func allTargetAppRows() -> [(name: String, bundleID: String)] {
+        var rows = PRESET_TARGET_APPS
+        let presetIDs = Set(PRESET_TARGET_APPS.map { $0.bundleID })
+        for custom in loadCustomBundleIDs() where !presetIDs.contains(custom) {
+            rows.append((name: "Custom", bundleID: custom))
+        }
+        return rows
+    }
+
+    private func rebuildCheckboxes() {
+        guard let stack = checkboxStack else { return }
+        for view in stack.arrangedSubviews {
+            stack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for (name, bundleID) in allTargetAppRows() {
+            let button = NSButton(frame: .zero)
+            button.setButtonType(.switch)
+            button.title = "\(name) — \(bundleID)"
+            button.target = self
+            button.action = #selector(toggleBundleID(_:))
+            button.identifier = NSUserInterfaceItemIdentifier(bundleID)
+            button.state = ALLOWED_BUNDLE_IDS.contains(bundleID) ? .on : .off
+            stack.addArrangedSubview(button)
+        }
+    }
+
+    @objc private func toggleBundleID(_ sender: NSButton) {
+        guard let bundleID = sender.identifier?.rawValue else { return }
+        if sender.state == .on {
+            ALLOWED_BUNDLE_IDS.insert(bundleID)
+        } else {
+            ALLOWED_BUNDLE_IDS.remove(bundleID)
+        }
+        saveAllowedBundleIDs()
+    }
+
+    @objc private func addCustomBundleID() {
+        guard let field = addField else { return }
+        let bundleID = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bundleID.isEmpty else { return }
+        field.stringValue = ""
+
+        if !PRESET_TARGET_APPS.contains(where: { $0.bundleID == bundleID }) {
+            var custom = loadCustomBundleIDs()
+            if !custom.contains(bundleID) {
+                custom.append(bundleID)
+                saveCustomBundleIDs(custom)
+            }
+        }
+        ALLOWED_BUNDLE_IDS.insert(bundleID) // newly typed = immediately enabled
+        saveAllowedBundleIDs()
+        rebuildCheckboxes()
+    }
+}
+
 final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let stateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "", action: #selector(togglePause), keyEquivalent: "")
+    private let targetAppsController = TargetAppsWindowController()
 
     override init() {
         super.init()
@@ -176,6 +341,10 @@ final class StatusMenuController: NSObject {
         stateItem.isEnabled = false
         menu.addItem(stateItem)
         menu.addItem(NSMenuItem.separator())
+        let targetAppsItem = NSMenuItem(title: "Target Apps...", action: #selector(showTargetApps), keyEquivalent: "")
+        targetAppsItem.target = self
+        targetAppsItem.attributedTitle = menuItemTitle("Target Apps…")
+        menu.addItem(targetAppsItem)
         pauseItem.target = self
         menu.addItem(pauseItem)
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
@@ -190,6 +359,10 @@ final class StatusMenuController: NSObject {
         menu.addItem(versionItem)
         statusItem.menu = menu
         refresh()
+    }
+
+    @objc private func showTargetApps() {
+        targetAppsController.show()
     }
 
     func refresh() {
