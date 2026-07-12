@@ -16,6 +16,7 @@ This file guides Claude Code when working in this repository.
 ## Conventions
 
 - Write code comments and commit messages in English for token efficiency.
+- Install target: /Applications (admin account, so no sudo required).
 - Follow semantic versioning for tagged releases.
 - Keep a `dev-log.md` and `known-issues.md` if the project grows enough to
   warrant tracking either.

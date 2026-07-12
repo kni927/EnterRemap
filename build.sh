@@ -4,12 +4,13 @@
 set -e
 
 APP_NAME="EnterRemap"
-VERSION="1.0.0"
-BUILD_NUMBER="1"
+VERSION="1.1.0"
+BUILD_NUMBER="2"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$REPO_DIR/build"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
-INSTALL_DIR="$HOME/Applications"
+# Install target: /Applications (admin account, no sudo needed)
+INSTALL_DIR="/Applications"
 
 echo "=== Step 1: Cleaning previous build ==="
 rm -rf "$BUILD_DIR"
