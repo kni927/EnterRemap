@@ -1,6 +1,8 @@
 import Cocoa
 import Carbon
 import CoreGraphics
+import Darwin
+import UserNotifications
 
 // Core idea (CGEventTap + eventSourceStateID for IME-safe Enter remap)
 // credited to: https://qiita.com/nate3870/items/51b196de9a07717d3952
@@ -103,6 +105,57 @@ func isIMEUIWindowVisible() -> Bool {
     }
 }
 
+// MARK: - Notifications
+// Symptomatic fix in place of launchd KeepAlive (rejected: it would also
+// resurrect the process after a deliberate `killall`). Goal is only to
+// notice that EnterRemap stopped running, not to diagnose why.
+
+let notificationCenter = UNUserNotificationCenter.current()
+
+func requestNotificationPermission() {
+    // Idempotent: after the first grant/denial, the system answers
+    // immediately without prompting again, so this can run every launch.
+    notificationCenter.requestAuthorization(options: [.alert, .sound]) { _, error in
+        if let error = error {
+            fputs("Notification authorization request failed: \(error)\n", stderr)
+        }
+    }
+}
+
+func notify(_ title: String, _ body: String) {
+    let content = UNMutableNotificationContent()
+    content.title = title
+    content.body = body
+    content.sound = .default
+    let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+    notificationCenter.add(request) { error in
+        if let error = error {
+            fputs("Failed to post notification: \(error)\n", stderr)
+        }
+    }
+}
+
+// Keep sources alive; DispatchSourceSignal is cancelled if deallocated.
+var terminationSignalSources: [DispatchSourceSignal] = []
+
+func installTerminationNotifications() {
+    for sig in [SIGTERM, SIGINT, SIGHUP] {
+        signal(sig, SIG_IGN) // suppress default disposition so the source fires
+        let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+        source.setEventHandler {
+            notify("EnterRemap", "終了しました。ログイン項目に登録していれば次回ログイン時に再起動されます。")
+            // Pump the run loop briefly so the async notification request
+            // (delivered via XPC on the main queue) has a chance to go out
+            // before the process exits; this handler runs on the main
+            // queue itself, so blocking it with a semaphore would deadlock.
+            CFRunLoopRunInMode(.defaultMode, 2.0, false)
+            exit(0)
+        }
+        source.resume()
+        terminationSignalSources.append(source)
+    }
+}
+
 // MARK: - Event tap
 
 var eventTap: CFMachPort?
@@ -117,6 +170,9 @@ func eventCallback(
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: true)
+            if !CGEvent.tapIsEnabled(tap: tap) {
+                notify("EnterRemap", "イベントタップが無効化され、再有効化に失敗しました。アプリを再起動してください。")
+            }
         }
         return Unmanaged.passRetained(event)
     }
@@ -247,6 +303,21 @@ if CommandLine.arguments.contains("--probe") {
     runProbe()
     exit(0)
 }
+
+// Manual check for the notification path: `EnterRemap --test-notification`
+// requests permission (if not yet determined) and fires one notification.
+if CommandLine.arguments.contains("--test-notification") {
+    requestNotificationPermission()
+    notify("EnterRemap", "テスト通知です。これが表示されれば通知は正常に機能しています。")
+    // No run loop is active yet at this point in main.swift's top-level
+    // execution; pump one so the async authorization/notification XPC
+    // round-trip can complete before the process exits.
+    CFRunLoopRunInMode(.defaultMode, 5.0, false)
+    exit(0)
+}
+
+requestNotificationPermission()
+installTerminationNotifications()
 
 let eventMask: CGEventMask =
     (1 << CGEventType.keyDown.rawValue) |

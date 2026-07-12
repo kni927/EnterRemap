@@ -181,3 +181,32 @@ Google日本語入力 / Apple標準日本語入力それぞれで、対象アプ
 - [ ] マウスクリックで確定した直後のEnter(改行になること)
 - [ ] 変換中にEscapeで取り消し→Enter(改行になること)
 - [ ] 通常タイピングに遅延を感じないこと
+
+---
+
+# Phase 4 追記: 通知機能の実装と検証状況(2026-07-12)
+
+IME判定ロジックとは独立した機能だが、実装時に判明した重要な制約として
+ここにも記録する(詳細は [known-issues.md](../known-issues.md))。
+
+UserNotifications frameworkによる異常終了通知を実装したが、開発機
+(macOS 26.5.1)では `UNUserNotificationCenter.requestAuthorization` が
+`Notifications are not allowed for this application` で失敗し、
+システム設定 > 通知にアプリ自体が登録されない状態だった。
+
+`spctl -a -vv` で確認したところ、ad-hoc署名・Developer ID署名
+(未公証)いずれも `rejected` となっており、このOSバージョンでは
+UNUserNotificationCenterの権限要求に公証(notarization)が
+必要になっている可能性が高い。公証は配布方針に関わる判断のため、
+実施はユーザー側に委ねる。
+
+コード自体(requestAuthorization呼び出し、UNNotificationRequest構築、
+DispatchSourceSignalによるSIGTERM/SIGINT/SIGHUP捕捉)は標準的な実装であり、
+公証済み環境では動作する見込み。ただし以下の設計上の注意点がある:
+
+- 通知投函(`UNUserNotificationCenter.add`)はXPC経由の非同期処理で、
+  完了コールバックはメインキューにディスパッチされ得る。シグナルハンドラ
+  自体もメインキュー上で実行されるため、完了をセマフォで同期待ちすると
+  **メインキューが自分自身の完了コールバックを待ってデッドロックする**。
+  これを避けるため、`CFRunLoopRunInMode`でメインループを一定時間
+  (2〜5秒)ポンプしてから`exit()`する方式にした(セマフォ+wait方式は不採用)。

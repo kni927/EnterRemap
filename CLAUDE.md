@@ -26,6 +26,6 @@ This file guides Claude Code when working in this repository.
 ## Build & Test
 
 - `./build.sh` — compiles `main.swift`, creates `build/EnterRemap.app`
-  (LSUIElement, ad-hoc signed), and installs it to `~/Applications`.
+  (LSUIElement, ad-hoc signed), and installs it to `/Applications`.
 - No automated tests; verification is a successful build plus manual checks
   in the target apps (Enter / Cmd+Enter / Shift+Enter / IME confirm Enter).
