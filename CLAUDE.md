@@ -16,6 +16,9 @@ This file guides Claude Code when working in this repository.
 ## Conventions
 
 - Write code comments and commit messages in English for token efficiency.
+- All in-app UI text (menu items, dialogs, status/log strings) is English,
+  now and for future phases. README is the only place Japanese appears
+  (as `README-ja.md`).
 - Install target: /Applications (admin account, so no sudo required).
 - Name files under `docs/` as `YYYY-MM-DD-NN-<slug>.md`, where NN is a
   two-digit within-day sequence starting at 01.

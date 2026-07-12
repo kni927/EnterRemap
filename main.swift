@@ -167,9 +167,9 @@ final class StatusMenuController: NSObject {
         menu.addItem(NSMenuItem.separator())
         pauseItem.target = self
         menu.addItem(pauseItem)
-        let quitItem = NSMenuItem(title: "終了", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
-        quitItem.attributedTitle = menuItemTitle("終了")
+        quitItem.attributedTitle = menuItemTitle("Quit")
         menu.addItem(quitItem)
         menu.addItem(NSMenuItem.separator())
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -197,7 +197,7 @@ final class StatusMenuController: NSObject {
         statusItem.button?.image = image
         statusItem.button?.title = ""
         stateItem.attributedTitle = menuItemTitle(stateText)
-        pauseItem.attributedTitle = menuItemTitle(isPaused ? "再開" : "一時停止")
+        pauseItem.attributedTitle = menuItemTitle(isPaused ? "Resume" : "Pause")
     }
 
     @objc private func togglePause() {
