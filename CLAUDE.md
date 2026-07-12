@@ -17,6 +17,8 @@ This file guides Claude Code when working in this repository.
 
 - Write code comments and commit messages in English for token efficiency.
 - Install target: /Applications (admin account, so no sudo required).
+- Name files under `docs/` as `YYYY-MM-DD-NN-<slug>.md`, where NN is a
+  two-digit within-day sequence starting at 01.
 - Follow semantic versioning for tagged releases.
 - Keep a `dev-log.md` and `known-issues.md` if the project grows enough to
   warrant tracking either.

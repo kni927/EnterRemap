@@ -14,31 +14,21 @@ let ALLOWED_BUNDLE_IDS: Set<String> = [
 ]
 
 let KEYCODE_ENTER: CGKeyCode = 36
-
-// MARK: - App gate
-
-func isTargetAppActive() -> Bool {
-    guard let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else {
-        return false
-    }
-    return ALLOWED_BUNDLE_IDS.contains(bundleID)
-}
+let KEYCODE_BACKSPACE: CGKeyCode = 51
+let KEYCODE_ESCAPE: CGKeyCode = 53
 
 // MARK: - IME composition detection
-// Layered check, evaluated only for Enter/Cmd+Enter in target apps.
-// See docs/2026-07-12-ime-detection-notes.md for the investigation
-// behind this design and its known limitations.
+// Layered check; see docs/2026-07-12-01-ime-detection-notes.md for the
+// investigation, tradeoffs, and known limitations.
 
 // (1) Synthetic-event check kept from Phase 1: Apple JIS IME posts its
-// confirm-Enter with a non-default source state ID. Removing this would
-// regress Apple IME (live-conversion confirm shows no candidate window,
-// so the window check below cannot catch it).
+// confirm-Enter with a non-default source state ID.
 func isSyntheticIMEEvent(_ event: CGEvent) -> Bool {
     return event.getIntegerValueField(.eventSourceStateID) != 1
 }
 
 // (2) Fast gate: composition is impossible unless the current input
-// source is an IME in a non-Roman input mode (~0.01ms).
+// source is an IME in a non-Roman input mode (~0.01ms warm).
 func isCJKInputModeActive() -> Bool {
     guard let src = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
           let prop = TISGetInputSourceProperty(src, kTISPropertyInputModeID) else {
@@ -46,6 +36,27 @@ func isCJKInputModeActive() -> Bool {
     }
     let mode = Unmanaged<CFString>.fromOpaque(prop).takeUnretainedValue() as String
     return !mode.contains("Roman")
+}
+
+// (3) Composing state machine (Phase 3): tracks whether a conversion
+// session is in progress from the keyDown history. Covers the window
+//-detection blind spot in Google Japanese Input right after the first
+// Space (suggestion window closed, candidate window not yet shown).
+var composingKeyCount = 0
+var lastFrontBundleID: String? = nil
+
+// A key that feeds characters into the IME buffer: it produces a
+// printable, non-space character at keyboard-layout level.
+func generatesText(_ event: CGEvent) -> Bool {
+    var length = 0
+    var chars = [UniChar](repeating: 0, count: 4)
+    event.keyboardGetUnicodeString(
+        maxStringLength: 4, actualStringLength: &length, unicodeString: &chars)
+    guard length > 0 else { return false }
+    let c = chars[0]
+    if c <= 0x20 || c == 0x7F { return false }            // controls, space
+    if (0xF700...0xF8FF).contains(c) { return false }      // arrows, F-keys
+    return true
 }
 
 func focusedUIElement() -> AXUIElement? {
@@ -57,7 +68,7 @@ func focusedUIElement() -> AXUIElement? {
     return (element as! AXUIElement)
 }
 
-// (3) Marked-text query. Chromium/Electron does not expose composition
+// (4) Marked-text query. Chromium/Electron does not expose composition
 // state through AX today, so this usually returns nil; trusted only when
 // the element explicitly reports a boolean.
 func axMarkedTextState() -> Bool? {
@@ -70,9 +81,8 @@ func axMarkedTextState() -> Bool? {
     return nil
 }
 
-// (4) Fallback: while composing, Google Japanese Input keeps a
+// (5) Reinforcing signal: while composing, Google Japanese Input keeps a
 // suggestion/candidate window on screen, owned by its Renderer process.
-// Any on-screen window owned by a running IME process counts (~1.7ms).
 func isIMEUIWindowVisible() -> Bool {
     var imePids = Set<pid_t>()
     for app in NSWorkspace.shared.runningApplications {
@@ -88,16 +98,6 @@ func isIMEUIWindowVisible() -> Bool {
         guard let pid = window[kCGWindowOwnerPID as String] as? pid_t else { return false }
         return imePids.contains(pid)
     }
-}
-
-// Defaults to "not composing" (remap) when no signal fires: a false
-// "composing" would let Enter through and send the message — the exact
-// accident this tool exists to prevent.
-func isComposing(_ event: CGEvent) -> Bool {
-    if isSyntheticIMEEvent(event) { return true }
-    if !isCJKInputModeActive() { return false }
-    if let hasMarked = axMarkedTextState() { return hasMarked }
-    return isIMEUIWindowVisible()
 }
 
 // MARK: - Event tap
@@ -118,26 +118,72 @@ func eventCallback(
         return Unmanaged.passRetained(event)
     }
 
+    // A click commits any composition in progress (and moves focus).
+    if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
+        composingKeyCount = 0
+        return Unmanaged.passRetained(event)
+    }
+
     guard type == .keyDown else { return Unmanaged.passRetained(event) }
+
+    // App switch ends the composing session (~1µs warm per event).
+    let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    if bundleID != lastFrontBundleID {
+        lastFrontBundleID = bundleID
+        composingKeyCount = 0
+    }
+    let isTarget = bundleID.map(ALLOWED_BUNDLE_IDS.contains) ?? false
+    guard isTarget else { return Unmanaged.passRetained(event) }
+
     let keycode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
     let flags   = event.flags
     let isCmd   = flags.contains(.maskCommand)
     let isShift = flags.contains(.maskShift)
 
-    guard keycode == KEYCODE_ENTER else { return Unmanaged.passRetained(event) }
-    guard isTargetAppActive() else { return Unmanaged.passRetained(event) }
-    if isShift && !isCmd { return Unmanaged.passRetained(event) }
-    if isComposing(event) { return Unmanaged.passRetained(event) }
-
-    if isCmd {
-        // Cmd+Enter -> plain Enter (send)
-        event.flags = flags.subtracting(.maskCommand)
-        return Unmanaged.passRetained(event)
-    } else {
-        // Enter -> Shift+Enter (newline)
-        event.flags = flags.union(.maskShift)
+    // --- Remap path: Enter / Cmd+Enter ---
+    if keycode == KEYCODE_ENTER {
+        if isShift && !isCmd { return Unmanaged.passRetained(event) }
+        if isSyntheticIMEEvent(event) {
+            // Apple IME confirm-Enter: the session ends with it.
+            composingKeyCount = 0
+            return Unmanaged.passRetained(event)
+        }
+        if !isCJKInputModeActive() {
+            composingKeyCount = 0 // mode switched away mid-session: committed
+        } else {
+            if composingKeyCount > 0 {
+                // Conversion session in progress: let Enter confirm it.
+                composingKeyCount = 0
+                return Unmanaged.passRetained(event)
+            }
+            // Reinforcing signals (state machine may have missed the start).
+            if axMarkedTextState() == true || isIMEUIWindowVisible() {
+                return Unmanaged.passRetained(event)
+            }
+        }
+        if isCmd {
+            // Cmd+Enter -> plain Enter (send)
+            event.flags = flags.subtracting(.maskCommand)
+        } else {
+            // Enter -> Shift+Enter (newline)
+            event.flags = flags.union(.maskShift)
+        }
         return Unmanaged.passRetained(event)
     }
+
+    // --- Observation path: track composing state, never modify events ---
+    if isSyntheticIMEEvent(event) { return Unmanaged.passRetained(event) }
+    if keycode == KEYCODE_ESCAPE {
+        composingKeyCount = 0 // conversion cancelled
+    } else if isCmd {
+        composingKeyCount = 0 // Cmd shortcut commits/aborts composition
+    } else if keycode == KEYCODE_BACKSPACE {
+        if composingKeyCount > 0 { composingKeyCount -= 1 }
+    } else if !flags.contains(.maskControl),
+              generatesText(event), isCJKInputModeActive() {
+        composingKeyCount += 1
+    }
+    return Unmanaged.passRetained(event)
 }
 
 // MARK: - Probe mode (diagnostics)
@@ -199,7 +245,11 @@ if CommandLine.arguments.contains("--probe") {
     exit(0)
 }
 
-let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+let eventMask: CGEventMask =
+    (1 << CGEventType.keyDown.rawValue) |
+    (1 << CGEventType.leftMouseDown.rawValue) |
+    (1 << CGEventType.rightMouseDown.rawValue) |
+    (1 << CGEventType.otherMouseDown.rawValue)
 
 guard let tap = CGEvent.tapCreate(
     tap: .cgSessionEventTap,
@@ -215,8 +265,9 @@ guard let tap = CGEvent.tapCreate(
 }
 eventTap = tap
 
-// Pre-warm the composition-check path: the first call pays one-time
-// framework initialization (~150ms measured); warm calls are 1-9ms.
+// Pre-warm both paths: first calls pay one-time framework init
+// (frontmostApplication ~10ms, composition check ~150ms, measured).
+lastFrontBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
 _ = isCJKInputModeActive()
 _ = focusedUIElement()
 _ = isIMEUIWindowVisible()

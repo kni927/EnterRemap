@@ -23,18 +23,21 @@ bundle ID許可リスト方式(前面アプリのbundle IDで判定)。
 
 Web版(ブラウザ)は対象外 — Chrome拡張(Chat AI Ctrl+Enter Sender等)で対応済み。
 
-## IME判定の仕組み(v1.1)
+## IME判定の仕組み(v1.2)
 
-Enter押下時のみ、多層チェックで「今まさに変換中か」を判定する
-(詳細: [docs/2026-07-12-ime-detection-notes.md](docs/2026-07-12-ime-detection-notes.md))。
+対象アプリ前面時のkeyDownを観察して「変換セッション中か」を状態機械で
+トラッキングし、Enter押下時に多層チェックで判定する
+(詳細: [docs/2026-07-12-01-ime-detection-notes.md](docs/2026-07-12-01-ime-detection-notes.md))。
 
 1. `eventSourceStateID != 1` → IME由来イベント(Apple標準日本語入力の確定Enter)
 2. 現在の入力ソースが英数/非IME → 非変換中(TIS照会 ~0.01ms)
-3. フォーカス要素の `AXHasMarkedText`(取得できる場合のみ)
-4. IMEプロセス所有のオンスクリーンウィンドウ検出(~1.7ms) —
-   Google日本語入力のサジェスト/候補ウィンドウを検出する
+3. 変換状態トラッキング: 日本語モードでの文字キー入力で開始、
+   Enter確定/Escape/クリック/アプリ切替/Cmd系ショートカットで解除 —
+   Google日本語入力のSpace変換直後(候補ウィンドウ非表示区間)もカバー
+4. 補強シグナル: フォーカス要素の `AXHasMarkedText`、
+   IMEプロセス所有のオンスクリーンウィンドウ検出(~4ms)
 
-最悪経路でも合計 ~2ms で、体感遅延はない。
+観察パスは ~0.03ms/keyDown、Enter時の最悪経路でも10ms以内で体感遅延はない。
 
 診断モード: `/Applications/EnterRemap.app/Contents/MacOS/EnterRemap --probe`
 を実行すると、各シグナルの値とレイテンシを1秒間隔で10回ダンプする
