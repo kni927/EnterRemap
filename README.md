@@ -34,10 +34,12 @@ A one-shot notification on crash (Phase 4) turned out easy to miss — by
 the time it appeared, it had often already gone unnoticed. Replaced with
 an always-visible menu bar status item instead:
 
-- 🟢 running
-- 🟡 paused (toggled from the menu; the process keeps running)
-- 🔴 the event tap was disabled and the existing auto-re-enable logic
-  failed to recover it (needs a restart)
+- **Running** — small monochrome dot, follows light/dark mode
+- **Paused** — small dot tinted `#E0B03E` (toggled from the menu; the
+  process keeps running)
+- **Tap Recovery Failed** — small dot tinted `#C9615C`; the event tap was
+  disabled and the existing auto-re-enable logic failed to recover it
+  (needs a restart)
 
 Click the icon for a menu with the current state, "Pause/Resume", and
 "Quit". While paused, Enter/Cmd+Enter pass through completely untouched —
@@ -98,7 +100,8 @@ Accessibility permission (remove and re-add the entry).
 
 ## Status & stopping
 
-Normally the menu bar icon (🟢/🟡/🔴) and its "Pause/Resume"/"Quit" menu
+Normally the menu bar icon (a small dot: gray-scale/yellow/red) and its
+"Pause/Resume"/"Quit" menu
 items are all you need. From a terminal:
 
 ```bash

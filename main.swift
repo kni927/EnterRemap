@@ -143,14 +143,25 @@ func dotImage(diameter: CGFloat, color: NSColor, template: Bool) -> NSImage {
     return image
 }
 
+// One step below the default menu font, but NSFont.menuFont(ofSize:)
+// bakes in extra leading tuned for full-size menus, which read as
+// loosely spaced at a smaller size; plain systemFont keeps row height
+// closer to the text.
+let MENU_ITEM_FONT_SIZE: CGFloat = 12
+
 func menuItemFont() -> NSFont {
-    NSFont.menuFont(ofSize: NSFont.smallSystemFontSize)
+    NSFont.systemFont(ofSize: MENU_ITEM_FONT_SIZE)
 }
 
 func menuItemTitle(_ text: String) -> NSAttributedString {
-    NSAttributedString(string: text, attributes: [
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.lineHeightMultiple = 1.0
+    paragraphStyle.paragraphSpacingBefore = 0
+    paragraphStyle.paragraphSpacing = 0
+    return NSAttributedString(string: text, attributes: [
         .font: menuItemFont(),
         .foregroundColor: NSColor.labelColor,
+        .paragraphStyle: paragraphStyle,
     ])
 }
 
