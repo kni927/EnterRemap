@@ -126,6 +126,34 @@ func isIMEUIWindowVisible() -> Bool {
 var isPaused = false
 var tapHealthy = true
 
+let STATUS_DOT_DIAMETER: CGFloat = 8
+let STATUS_PAUSED_COLOR = NSColor(red: 0xE0 / 255, green: 0xB0 / 255, blue: 0x3E / 255, alpha: 1)
+let STATUS_FAILED_COLOR = NSColor(red: 0xC9 / 255, green: 0x61 / 255, blue: 0x5C / 255, alpha: 1)
+
+// A small filled circle. `template: true` yields a monochrome image that
+// AppKit auto-tints for the menu bar's current appearance (light/dark);
+// used for the "running" state. Colored states render as-is untinted.
+func dotImage(diameter: CGFloat, color: NSColor, template: Bool) -> NSImage {
+    let image = NSImage(size: NSSize(width: diameter, height: diameter), flipped: false) { rect in
+        color.setFill()
+        NSBezierPath(ovalIn: rect).fill()
+        return true
+    }
+    image.isTemplate = template
+    return image
+}
+
+func menuItemFont() -> NSFont {
+    NSFont.menuFont(ofSize: NSFont.smallSystemFontSize)
+}
+
+func menuItemTitle(_ text: String) -> NSAttributedString {
+    NSAttributedString(string: text, attributes: [
+        .font: menuItemFont(),
+        .foregroundColor: NSColor.labelColor,
+    ])
+}
+
 final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let stateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -141,32 +169,35 @@ final class StatusMenuController: NSObject {
         menu.addItem(pauseItem)
         let quitItem = NSMenuItem(title: "終了", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
+        quitItem.attributedTitle = menuItemTitle("終了")
         menu.addItem(quitItem)
         menu.addItem(NSMenuItem.separator())
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let versionItem = NSMenuItem(title: "EnterRemap v\(version)", action: nil, keyEquivalent: "")
         versionItem.isEnabled = false
+        versionItem.attributedTitle = menuItemTitle("EnterRemap v\(version)")
         menu.addItem(versionItem)
         statusItem.menu = menu
         refresh()
     }
 
     func refresh() {
-        let icon: String
+        let image: NSImage
         let stateText: String
         if !tapHealthy {
-            icon = "🔴"
-            stateText = "状態: 復帰失敗(要再起動)"
+            image = dotImage(diameter: STATUS_DOT_DIAMETER, color: STATUS_FAILED_COLOR, template: false)
+            stateText = "Tap Recovery Failed"
         } else if isPaused {
-            icon = "🟡"
-            stateText = "状態: 一時停止中"
+            image = dotImage(diameter: STATUS_DOT_DIAMETER, color: STATUS_PAUSED_COLOR, template: false)
+            stateText = "Paused"
         } else {
-            icon = "🟢"
-            stateText = "状態: 稼働中"
+            image = dotImage(diameter: STATUS_DOT_DIAMETER, color: NSColor.labelColor, template: true)
+            stateText = "Running"
         }
-        statusItem.button?.title = icon
-        stateItem.title = stateText
-        pauseItem.title = isPaused ? "再開" : "一時停止"
+        statusItem.button?.image = image
+        statusItem.button?.title = ""
+        stateItem.attributedTitle = menuItemTitle(stateText)
+        pauseItem.attributedTitle = menuItemTitle(isPaused ? "再開" : "一時停止")
     }
 
     @objc private func togglePause() {
