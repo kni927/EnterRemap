@@ -49,6 +49,19 @@ verified end-to-end in the development environment, where macOS refused
 the notification-permission request outright for an unnotarized app. See
 [known-issues.md](known-issues.md) for details.
 
+## Skipping single-line text fields (v1.3.1)
+
+A single-line field like a Save As dialog's filename box renders as a
+sheet/panel owned by the calling app (e.g. Claude Desktop), so the
+frontmost-bundle-ID check alone can't tell it apart from the chat input —
+Enter was getting remapped there too. In a single-line field, Enter means
+"activate the default button", not "insert a newline", so the focused
+element's AXRole now gates the remap:
+
+- `AXTextField` (single-line) → pass through unchanged (Cmd+Enter too)
+- `AXTextArea` or role unavailable (e.g. Electron) → existing remap + IME
+  logic applies as before
+
 ## How IME detection works (v1.2)
 
 While a target app is frontmost, EnterRemap observes keyDown events to

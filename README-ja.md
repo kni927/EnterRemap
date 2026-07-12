@@ -44,6 +44,18 @@ UserNotifications frameworkで以下のタイミングでmacOS通知を出す:
 (未公証のアプリに対してmacOSが通知権限要求自体を拒否する状態)では
 行えなかった。詳細は [known-issues.md](known-issues.md) を参照。
 
+## 単一行テキストフィールドの除外(v1.3.1)
+
+Save Asダイアログのファイル名欄のような単一行入力(AXTextField)は、
+呼び出し元アプリ(例: Claude Desktop)のシート/パネルとして表示されるため
+frontmostアプリの判定だけでは対象アプリと区別できず、リマップの対象に
+なってしまっていた。単一行フィールドではEnterは「デフォルトボタンの起動」
+であり改行ではないため、フォーカス中の要素のAXRoleを見て以下のように
+判定する:
+
+- `AXTextField`(単一行) → リマップせず素通し(Cmd+Enterも素通し)
+- `AXTextArea`等・role取得不可(Electron等) → 既存のリマップ+IME判定を適用
+
 ## IME判定の仕組み(v1.2)
 
 対象アプリ前面時のkeyDownを観察して「変換セッション中か」を状態機械で

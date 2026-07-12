@@ -86,6 +86,20 @@ func axMarkedTextState() -> Bool? {
     return nil
 }
 
+// (Phase 6) Role of the focused element. A single-line AXTextField (e.g.
+// a Save As filename field, a search box) uses Enter to trigger the
+// default button, not to insert a newline — the remap must not apply
+// there. This also covers sheets/panels (e.g. Save As) that render as
+// part of the owning app, so the frontmost-bundle-ID check alone cannot
+// distinguish them from the chat input.
+func focusedElementRole() -> String? {
+    guard let element = focusedUIElement() else { return nil }
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &value) == .success,
+          let role = value as? String else { return nil }
+    return role
+}
+
 // (5) Reinforcing signal: while composing, Google Japanese Input keeps a
 // suggestion/candidate window on screen, owned by its Renderer process.
 func isIMEUIWindowVisible() -> Bool {
@@ -202,6 +216,11 @@ func eventCallback(
     // --- Remap path: Enter / Cmd+Enter ---
     if keycode == KEYCODE_ENTER {
         if isShift && !isCmd { return Unmanaged.passRetained(event) }
+        // Single-line field (role unavailable = fall back to the existing
+        // allowlist+IME logic below, e.g. Electron apps that don't expose it).
+        if focusedElementRole() == (kAXTextFieldRole as String) {
+            return Unmanaged.passRetained(event)
+        }
         if isSyntheticIMEEvent(event) {
             // Apple IME confirm-Enter: the session ends with it.
             composingKeyCount = 0
@@ -283,6 +302,7 @@ func runProbe() {
             }
             print("focused element: pid=\(pid) [\(String(format: "%.3f", axMs))ms]")
             print("  attributes: \(attrs)")
+            print("  AXRole: \(String(describing: focusedElementRole()))")
             print("  AXHasMarkedText: \(String(describing: axMarkedTextState()))")
         } else {
             print("focused element: none [\(String(format: "%.3f", axMs))ms]")
