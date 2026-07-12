@@ -2,9 +2,10 @@
 
 English | [日本語](README-ja.md)
 
-A macOS menu-bar-less background tool that remaps Enter / Cmd+Enter in an
-IME-safe way, so native AI chat apps don't send your message while you're
-still converting Japanese (or other IME) input.
+A macOS background tool (no Dock icon, a menu bar status item only) that
+remaps Enter / Cmd+Enter in an IME-safe way, so native AI chat apps don't
+send your message while you're still converting Japanese (or other IME)
+input.
 
 - **Enter** → newline (converted to Shift+Enter)
 - **Cmd+Enter** → send (Cmd stripped, plain Enter)
@@ -27,27 +28,22 @@ Add an app by adding one line to `ALLOWED_BUNDLE_IDS` in [main.swift](main.swift
 Browser-based web apps are out of scope — covered separately by browser
 extensions (e.g. "Chat AI Ctrl+Enter Sender").
 
-## Crash/exit notifications (v1.3)
+## Menu bar icon (v1.4)
 
-Auto-restart via launchd + KeepAlive was rejected: it would also resurrect
-the process after a deliberate `killall`. Instead, EnterRemap posts a macOS
-notification (via UserNotifications) so you notice it stopped:
+A one-shot notification on crash (Phase 4) turned out easy to miss — by
+the time it appeared, it had often already gone unnoticed. Replaced with
+an always-visible menu bar status item instead:
 
-- when the event tap is disabled and the existing auto-re-enable logic
-  fails to recover it
-- when SIGTERM/SIGINT/SIGHUP is caught (no attempt is made to distinguish
-  this from an intentional `killall` — the goal is only to notice that it
-  stopped, not to diagnose why)
+- 🟢 running
+- 🟡 paused (toggled from the menu; the process keeps running)
+- 🔴 the event tap was disabled and the existing auto-re-enable logic
+  failed to recover it (needs a restart)
 
-This requires notification permission, requested automatically on first
-launch. If you never see a notification, check **System Settings >
-Notifications > EnterRemap**. `EnterRemap --test-notification` fires one
-test notification for diagnostics.
-
-**Known limitation**: delivery of these notifications could not be
-verified end-to-end in the development environment, where macOS refused
-the notification-permission request outright for an unnotarized app. See
-[known-issues.md](known-issues.md) for details.
+Click the icon for a menu with the current state, "Pause/Resume", and
+"Quit". While paused, Enter/Cmd+Enter pass through completely untouched —
+this skips the single-line-field check and all IME logic too for any
+target-app keystroke, on the principle that doing nothing beats guessing
+wrong while the user has explicitly asked the tool to stand down.
 
 ## Skipping single-line text fields (v1.3.1)
 
@@ -102,6 +98,9 @@ Accessibility permission (remove and re-add the entry).
 
 ## Status & stopping
 
+Normally the menu bar icon (🟢/🟡/🔴) and its "Pause/Resume"/"Quit" menu
+items are all you need. From a terminal:
+
 ```bash
 pgrep -l EnterRemap   # check it's running
 killall EnterRemap    # stop (no auto-restart; if registered as a Login
@@ -122,8 +121,12 @@ tool exists rather than reusing the article's code as-is):
   `eventSourceStateID` heuristic with a layered check (TIS gate, AX/window
   detection, composing-state tracking — Phases 2-3, details in
   [docs/2026-07-12-01-ime-detection-notes.md](docs/2026-07-12-01-ime-detection-notes.md))
-- Crash/exit notifications via UserNotifications, so an unintended stop
-  doesn't go unnoticed (Phase 4)
+- An always-visible menu bar status icon, so an unintended stop doesn't
+  go unnoticed (Phase 4 first tried UserNotifications for this, but a
+  one-shot notification proved too easy to miss and was replaced in
+  Phase 5)
+- AXRole-gated remap so Enter behaves correctly in single-line fields
+  like a Save As dialog's filename box (Phase 6)
 
 ## Known Issues
 

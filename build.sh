@@ -4,8 +4,8 @@
 set -e
 
 APP_NAME="EnterRemap"
-VERSION="1.3.1"
-BUILD_NUMBER="5"
+VERSION="1.4.0"
+BUILD_NUMBER="6"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$REPO_DIR/build"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
@@ -21,8 +21,7 @@ swiftc -sdk "$(xcrun --show-sdk-path)" \
   "$REPO_DIR/main.swift" \
   -o "$APP_DIR/Contents/MacOS/$APP_NAME" \
   -framework Cocoa \
-  -framework CoreGraphics \
-  -framework UserNotifications
+  -framework CoreGraphics
 
 echo "=== Step 3: Creating Info.plist ==="
 cat <<EOF > "$APP_DIR/Contents/Info.plist"
