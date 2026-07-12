@@ -2,6 +2,9 @@ import Cocoa
 import Carbon
 import CoreGraphics
 
+// Core idea (CGEventTap + eventSourceStateID for IME-safe Enter remap)
+// credited to: https://qiita.com/nate3870/items/51b196de9a07717d3952
+
 // MARK: - Configuration
 
 // Allowed target apps (bundle IDs). Single source of truth —
