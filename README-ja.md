@@ -10,6 +10,11 @@ macOS用のIMEセーフな Enter/Cmd+Enter リマップ常駐ツール。
 - **Shift+Enter** → そのまま(改行)
 - **IME変換中のEnter** → そのまま(変換確定に使わせる)
 
+**対象キーの範囲**: リマップするのはメインキーボードのReturnキー
+(`kVK_Return`、keycode 36)のみ。テンキーのEnterキー
+(`kVK_ANSI_KeypadEnter`、keycode 76)は対象外で、アプリ本来の
+デフォルト動作(通常は送信)のまま。
+
 ## 対象アプリ(v1.5)
 
 bundle ID許可リスト方式(前面アプリのbundle IDで判定)。許可リストは

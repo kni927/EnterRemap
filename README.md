@@ -12,6 +12,11 @@ input.
 - **Shift+Enter** → unchanged (newline)
 - **Enter while composing with an IME** → unchanged (lets the IME confirm)
 
+**Keyboard scope**: only the main keyboard's Return key (`kVK_Return`,
+keycode 36) is remapped. The numeric keypad's Enter key
+(`kVK_ANSI_KeypadEnter`, keycode 76) is untouched and keeps the app's
+own default behavior (usually send).
+
 ## Target apps (v1.5)
 
 Frontmost app is checked against a bundle ID allowlist. The allowlist
