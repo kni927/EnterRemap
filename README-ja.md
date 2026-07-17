@@ -2,157 +2,98 @@
 
 [English](README.md) | 日本語
 
-macOS用のIMEセーフな Enter/Cmd+Enter リマップ常駐ツール。
-対象のAIチャット系ネイティブアプリで、Enterの誤送信を防ぐ。
+**EnterRemap** は、対応する **macOSネイティブアプリ**でメインキーボードの **Returnキー** の動作を変更する軽量なメニューバーユーティリティです。
 
-- **Enter** → 改行(Shift+Enterに変換)
-- **Cmd+Enter** → 送信(Cmdを外してEnterに変換)
-- **Shift+Enter** → そのまま(改行)
-- **IME変換中のEnter** → そのまま(変換確定に使わせる)
+本ツールは **macOSネイティブアプリ専用**です。ブラウザ版 ChatGPT などの Web アプリは対象としていません。
 
-**対象キーの範囲**: リマップするのはメインキーボードのReturnキー
-(`kVK_Return`、keycode 36)のみ。テンキーのEnterキー
-(`kVK_ANSI_KeypadEnter`、keycode 76)は対象外で、アプリ本来の
-デフォルト動作(通常は送信)のまま。
+---
 
-## 対象アプリ(v1.5)
+## 特徴
 
-bundle ID許可リスト方式(前面アプリのbundle IDで判定)。許可リストは
-`UserDefaults`に永続化され、メニューバーの **Target Apps...** から
-再ビルド不要でON/OFFできる:
+* メインキーボードの **Returnキー (`kVK_Return`)** をリマップ
+* **テンキーの Enterキー (`kVK_ANSI_KeypadEnter`)** は変更しません
+* Apple日本語入力・Google日本語入力の両方に対応
+* Discord など、ReturnキーとEnterキーを区別しないアプリでも利用可能
+* 軽量な Swift 製メニューバーアプリ
 
-| プリセット | Bundle ID | 初期状態 |
-|---|---|---|
-| Claude | `com.anthropic.claudefordesktop` | ON |
-| ChatGPT(新統合版) | `com.openai.codex` | ON |
-| ChatGPT Classic | `com.openai.chat` | ON |
-| Gemini | `com.google.GeminiMacOS` | ON |
-| Discord | `com.hnc.Discord` | OFF |
+---
 
-プリセットにないアプリは、同ウィンドウ内のbundle ID手動入力欄から
-追加できる(チェックを入れると即座に許可リストへ反映)。
+## 動作について
 
-Web版(ブラウザ)は対象外 — Chrome拡張(Chat AI Ctrl+Enter Sender等)で対応済み。
+EnterRemap がリマップするのは、**メインキーボードの Returnキー (`kVK_Return`) のみ**です。
 
-## メニューバーアイコン(v1.4)
+| キー                                  | 動作                         |
+| ----------------------------------- | -------------------------- |
+| Return (`kVK_Return`)               | リマップされます                   |
+| テンキー Enter (`kVK_ANSI_KeypadEnter`) | 変更されません（アプリ本来の動作のまま。通常は送信） |
 
-異常終了に通知(一過性)で気づく方式(Phase 4)は「通知が出た時点で
-もう見逃している」ことが度々あったため撤去し、メニューバーに常時表示の
-アイコンを置く方式に切り替えた:
+テンキーの Enterキーは意図的に変更していません。
 
-- **稼働中(Running)** — 小さいモノクロのドット、ライト/ダークモードに自動追従
-- **一時停止中(Paused)** — `#E0B03E`に着色した小さいドット
-  (メニューから手動で切り替え。プロセスは終了しない)
-- **復帰失敗(Tap Recovery Failed)** — `#C9615C`に着色した小さいドット。
-  イベントタップが無効化され、既存の自動再有効化ロジックでも
-  復帰できなかった状態(要再起動)
+そのため、アプリ側の標準動作との互換性を維持したまま、メインキーボードの Returnキーだけを変更できます。
 
-アイコンをクリックすると状態表示・「Target Apps...」・
-「Pause/Resume」・「Quit」のメニューが出る(UIは英語表記。日本語は
-READMEのみ)。一時停止中はEnter/Cmd+Enterともに完全に素通しになる
-(単一行フィールド判定・IME判定を含め、対象アプリでのkeyDown処理を
-すべてスキップする — 誤動作より「何もしない」を優先)。
+---
 
-## 単一行テキストフィールドの除外(v1.3.1)
+## 対応範囲
 
-Save Asダイアログのファイル名欄のような単一行入力(AXTextField)は、
-呼び出し元アプリ(例: Claude Desktop)のシート/パネルとして表示されるため
-frontmostアプリの判定だけでは対象アプリと区別できず、リマップの対象に
-なってしまっていた。単一行フィールドではEnterは「デフォルトボタンの起動」
-であり改行ではないため、フォーカス中の要素のAXRoleを見て以下のように
-判定する:
+本ツールは **macOSネイティブアプリ**を対象としています。
 
-- `AXTextField`(単一行) → リマップせず素通し(Cmd+Enterも素通し)
-- `AXTextArea`等・role取得不可(Electron等) → 既存のリマップ+IME判定を適用
+例：
 
-## IME判定の仕組み(v1.2)
+* ChatGPT Desktop
+* Claude Desktop
+* Discord
+* その他対応するネイティブアプリ
 
-対象アプリ前面時のkeyDownを観察して「変換セッション中か」を状態機械で
-トラッキングし、Enter押下時に多層チェックで判定する
-(詳細: [docs/2026-07-12-01-ime-detection-notes.md](docs/2026-07-12-01-ime-detection-notes.md))。
+Chrome や Safari 上で動作する **Web版 ChatGPT** などは対象外です。
 
-1. `eventSourceStateID != 1` → IME由来イベント(Apple標準日本語入力の確定Enter)
-2. 現在の入力ソースが英数/非IME → 非変換中(TIS照会 ~0.01ms)
-3. 変換状態トラッキング: 日本語モードでの文字キー入力で開始、
-   Enter確定/Escape/クリック/アプリ切替/Cmd系ショートカットで解除 —
-   Google日本語入力のSpace変換直後(候補ウィンドウ非表示区間)もカバー
-4. 補強シグナル: フォーカス要素の `AXHasMarkedText`、
-   IMEプロセス所有のオンスクリーンウィンドウ検出(~4ms)
+ブラウザ版 ChatGPT を利用する場合は、以下のような拡張機能の利用をおすすめします。
 
-観察パスは ~0.03ms/keyDown、Enter時の最悪経路でも10ms以内で体感遅延はない。
+* **ChatGPT Ctrl+Enter Sender**
 
-診断モード: `/Applications/EnterRemap.app/Contents/MacOS/EnterRemap --probe`
-を実行すると、各シグナルの値とレイテンシを1秒間隔で10回ダンプする
-(変換中の状態を確認したいときに使う)。
+---
 
-## ビルド & インストール
+## インストール
 
-```bash
-./build.sh
-```
+1. 最新版をダウンロード
+2. **EnterRemap.app** を **アプリケーション**フォルダへ移動
+3. 起動
+4. アクセシビリティ権限を許可
 
-`build/EnterRemap.app` を生成し、`/Applications/EnterRemap.app` へインストールする。
+---
 
-初回セットアップ:
+## 使い方
 
-1. **システム設定 > プライバシーとセキュリティ > アクセシビリティ** に EnterRemap を追加して許可
-2. **システム設定 > 一般 > ログイン項目** に EnterRemap を追加(常駐化)
-3. 起動: `open /Applications/EnterRemap.app`
+EnterRemapはメニューバーの小さいアイコンとして常駐します(Dockアイコンなし)。
+クリックすると:
 
-注意: ad-hoc署名のため、再ビルド後はアクセシビリティ許可の再付与
-(一度削除して再追加)が必要になる場合がある。
+* **Target Apps** — リマップを適用するアプリのチェックリスト
+  (Claude / ChatGPT / ChatGPT Classic / Geminiは初期状態ON。
+  **Discordは初期状態OFF** — Discordでもリマップしたい場合はここで有効化する)。
+  「Add Custom App...」から任意のアプリをbundle IDで追加できる
+* **Pause / Resume** — 終了せずに一時的にリマップを無効化
+* **Hide EnterRemap** / **Quit**
 
-## 状態確認・終了
+アイコン自体でも状態がひと目でわかる: 稼働中はモノクロ、一時停止中は黄色、
+キーボードフックの復帰に失敗し再起動が必要な場合は赤で表示される。
 
-通常はメニューバーアイコン(小さいドット、灰/黄/赤)とそのメニューの
-「Pause/Resume」「Quit」で足りる。ターミナルからの操作が必要な場合:
+---
 
-```bash
-pgrep -l EnterRemap   # 動作確認
-killall EnterRemap    # 終了(自動再起動はしない。ログイン項目に
-                      # 登録されている場合は次回ログイン時に復帰)
-open /Applications/EnterRemap.app   # 再起動
-```
+## 開発のきっかけ
 
-## 参考実装との差分
+本プロジェクトは、Claude Desktop で **「Enterで改行、Command+Enterで送信」** を実現する以下の記事に着想を得て開発しました。
 
-[参考にした記事](https://qiita.com/nate3870/items/51b196de9a07717d3952)の実装は
-Claude単体・Apple標準の日本語入力(ライブ変換確定)のみが動作する前提で、
-Google日本語入力は元々対象にしていない。本プロジェクトは以下の点を
-拡張している(なぜ似たような実装を再度行っているのかの理由):
+https://qiita.com/nate3870/items/51b196de9a07717d3952
 
-- 対象アプリをbundle ID許可リストで複数アプリ化(Claude / ChatGPT / Gemini)
-- Google日本語入力でも正しく動作させるため、`eventSourceStateID`単独判定を
-  やめ、TISゲート・AX/ウィンドウ検出・composing状態トラッキングの
-  多層判定に拡張(Phase 2〜3、詳細:
-  [docs/2026-07-12-01-ime-detection-notes.md](docs/2026-07-12-01-ime-detection-notes.md))
-- 異常終了に気づけるようメニューバーアイコンによる常時状態表示を追加
-  (Phase 4で一度UserNotificationsによる通知を実装したが、見逃しやすい
-  ため撤去しPhase 5で置き換えた)
-- Save Asダイアログ等の単一行入力でEnterが誤動作しないよう、
-  フォーカス要素のAXRoleで判定を分岐(Phase 6)
-- 対象アプリの許可リストをコード変更・再ビルド不要で編集できるよう、
-  `UserDefaults`永続化+メニューバーの設定ウィンドウを追加(Phase 7)
+その後、
 
-## Known Issues
+* Google日本語入力への対応
+* Discordなど追加アプリへの対応
+* 軽量な常駐ユーティリティ化
 
-- **IME候補ウィンドウのマウスクリック**: 変換候補が表示された状態で、
-  上部の入力文字列部分をクリックすると選択状態が解除されて本来の挙動に戻るが、
-  候補そのものをクリックすると選択状態が残ったままになる。次の入力自体は
-  問題なく行えるため実害はほぼなく、そもそも変換確定をマウスで行うこと自体が
-  稀なため、既知の限界として許容する。
+などを行い、より汎用的なツールとして公開しています。
 
-## 参考実装・クレジット
+---
 
-CGEventTap + eventSourceStateID によるIMEセーフなEnterリマップの
-基本アイデアは以下の記事による: https://qiita.com/nate3870/items/51b196de9a07717d3952
+## ライセンス
 
-## Workflow
-
-This project follows a Chat-then-Code workflow:
-
-1. Architecture/design decisions are made in chat and written into `TASK.md`.
-2. Claude Code implements against `TASK.md`, committing per task.
-3. Completed task phases are archived under `docs/tasks/`.
-
-See `CLAUDE.md` for details.
+MIT License
