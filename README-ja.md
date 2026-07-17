@@ -71,7 +71,9 @@ EnterRemapはメニューバーの小さいアイコンとして常駐します(
   **Discordは初期状態OFF** — Discordでもリマップしたい場合はここで有効化する)。
   「Add Custom App...」から任意のアプリをbundle IDで追加できる
 * **Pause / Resume** — 終了せずに一時的にリマップを無効化
-* **Hide EnterRemap** / **Quit**
+* **Open Login Items Settings...** — システム設定のログイン項目ページを
+  直接開く。ここでEnterRemapを追加すればログイン時に自動起動する
+* **Quit**
 
 アイコン自体でも状態がひと目でわかる: 稼働中はモノクロ、一時停止中は黄色、
 キーボードフックの復帰に失敗し再起動が必要な場合は赤で表示される。

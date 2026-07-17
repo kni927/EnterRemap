@@ -262,7 +262,13 @@ final class TargetAppsMenuController: NSObject {
     @objc private func promptAddCustomApp() {
         let alert = NSAlert()
         alert.messageText = "Add Custom App"
-        alert.informativeText = "Enter the target app's bundle identifier."
+        alert.informativeText = """
+            Enter the target app's bundle identifier.
+
+            To look it up, run one of these in Terminal:
+              mdls -name kMDItemCFBundleIdentifier /Applications/<AppName>.app
+              osascript -e 'id of app "<AppName>"'
+            """
         alert.addButton(withTitle: "Add")
         alert.addButton(withTitle: "Cancel")
 
@@ -308,11 +314,11 @@ final class StatusMenuController: NSObject {
         menu.addItem(targetAppsItem)
         pauseItem.target = self
         menu.addItem(pauseItem)
+        let loginItemsItem = NSMenuItem(title: "", action: #selector(openLoginItemsSettings), keyEquivalent: "")
+        loginItemsItem.target = self
+        loginItemsItem.attributedTitle = menuItemTitle("Open Login Items Settings…")
+        menu.addItem(loginItemsItem)
         menu.addItem(NSMenuItem.separator())
-        let hideItem = NSMenuItem(title: "Hide EnterRemap", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
-        hideItem.target = NSApp
-        hideItem.attributedTitle = menuItemTitle("Hide EnterRemap")
-        menu.addItem(hideItem)
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         quitItem.attributedTitle = menuItemTitle("Quit")
@@ -352,6 +358,12 @@ final class StatusMenuController: NSObject {
         // pause boundary: prefer a fresh start over a guess either way.
         composingKeyCount = 0
         refresh()
+    }
+
+    @objc private func openLoginItemsSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func quit() {

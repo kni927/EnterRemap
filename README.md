@@ -61,7 +61,10 @@ for:
   bundle identifier.
 * **Pause / Resume** — temporarily disable the remap everywhere without
   quitting.
-* **Hide EnterRemap** / **Quit**.
+* **Open Login Items Settings...** — jumps straight to System Settings'
+  Login Items page, where you can add EnterRemap so it starts
+  automatically at login.
+* **Quit**.
 
 The icon itself shows status at a glance: gray-scale when running,
 yellow when paused, red if the keyboard hook failed to recover and the
