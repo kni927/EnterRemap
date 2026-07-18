@@ -1,6 +1,7 @@
 import Cocoa
 import Carbon
 import CoreGraphics
+import ServiceManagement
 
 // Core idea (CGEventTap + eventSourceStateID for IME-safe Enter remap)
 // credited to: https://qiita.com/nate3870/items/51b196de9a07717d3952
@@ -76,6 +77,26 @@ func saveRemapKeypadEnter(_ value: Bool) {
 }
 
 var remapKeypadEnter: Bool = loadRemapKeypadEnter()
+
+// SMAppService is itself the source of truth for login-item state — no
+// UserDefaults flag of our own, so an external change (e.g. the user
+// removing it from System Settings > Login Items) can't drift out of
+// sync with the menu's checkmark.
+func loginItemIsRegistered() -> Bool {
+    SMAppService.mainApp.status == .enabled
+}
+
+func setLoginItemRegistered(_ enabled: Bool) {
+    do {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+    } catch {
+        fputs("Failed to \(enabled ? "register" : "unregister") login item: \(error)\n", stderr)
+    }
+}
 
 // MARK: - IME composition detection
 // Layered check; see docs/2026-07-12-01-ime-detection-notes.md for the
@@ -225,6 +246,14 @@ func menuItemTitle(_ text: String) -> NSAttributedString {
 // A drop target for .app bundles: extracts the bundle identifier via
 // Bundle(url:) and hands it to the caller instead of requiring the user
 // to already know (or go look up) the string.
+//
+// The prompt text is drawn directly in draw(_:) rather than added as a
+// subview: an earlier version overlaid a full-size NSTextField label on
+// top of this view, which silently ate the drop (drag destination
+// resolution goes to the topmost view under the cursor, and the label
+// wasn't registered for dragged types) — this was the root cause of
+// drag-and-drop never working. Keeping this view the only one in that
+// area sidesteps the issue entirely instead of relying on z-order.
 final class AppDropView: NSView {
     var onDrop: ((String) -> Void)?
 
@@ -252,6 +281,15 @@ final class AppDropView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         NSColor.controlBackgroundColor.setFill()
         dirtyRect.fill()
+
+        let text = "Drop a .app here"
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ]
+        let size = text.size(withAttributes: attrs)
+        let origin = NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2)
+        text.draw(at: origin, withAttributes: attrs)
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6)
         path.lineWidth = 1
         NSColor.separatorColor.setStroke()
@@ -316,15 +354,26 @@ final class TargetAppsMenuController: NSObject {
     }
 
     @objc private func promptAddCustomApp() {
+        // Opening a window synchronously from a menu-item action can
+        // lose the key-window race against the menu's own closing
+        // animation; deferring to the next run-loop turn (after the
+        // menu has fully dismissed) makes activation reliable.
+        DispatchQueue.main.async { [weak self] in
+            self?.showAddCustomAppPanel()
+        }
+    }
+
+    private func showAddCustomAppPanel() {
         if let panel = addPanel {
             addField?.stringValue = ""
-            panel.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+            panel.makeFirstResponder(addField)
             return
         }
 
         let field = NSTextField()
-        field.placeholderString = "com.example.app"
+        field.placeholderString = "Input bundle identifier or drag and drop an app"
         field.target = self
         field.action = #selector(confirmAddCustomApp)
         addField = field
@@ -333,12 +382,6 @@ final class TargetAppsMenuController: NSObject {
         dropView.onDrop = { [weak self] bundleID in
             self?.addField?.stringValue = bundleID
         }
-        let dropLabel = NSTextField(labelWithString: "Drop a .app here")
-        dropLabel.alignment = .center
-        dropLabel.textColor = .secondaryLabelColor
-        dropLabel.frame = dropView.bounds
-        dropLabel.autoresizingMask = [.width, .height]
-        dropView.addSubview(dropLabel)
 
         let addButton = NSButton(frame: .zero)
         addButton.title = "Add"
@@ -374,8 +417,13 @@ final class TargetAppsMenuController: NSObject {
         panel.center()
         addPanel = panel
 
-        panel.makeKeyAndOrderFront(nil)
+        // Activate the app (bring it forward) before ordering the
+        // window front: for an .accessory-policy app, a window can end
+        // up visible-but-not-key if made key while the app itself isn't
+        // yet active, which left the text field unable to accept
+        // keyboard input.
         NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
         panel.makeFirstResponder(field)
     }
 
@@ -410,6 +458,7 @@ final class StatusMenuController: NSObject {
     private let stateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "", action: #selector(togglePause), keyEquivalent: "")
     private let keypadEnterItem = NSMenuItem(title: "", action: #selector(toggleRemapKeypadEnter), keyEquivalent: "")
+    private let loginItemItem = NSMenuItem(title: "", action: #selector(toggleLoginItem), keyEquivalent: "")
     private let targetAppsController = TargetAppsMenuController()
 
     override init() {
@@ -428,10 +477,13 @@ final class StatusMenuController: NSObject {
         menu.addItem(keypadEnterItem)
         pauseItem.target = self
         menu.addItem(pauseItem)
-        let loginItemsItem = NSMenuItem(title: "", action: #selector(openLoginItemsSettings), keyEquivalent: "")
-        loginItemsItem.target = self
-        loginItemsItem.attributedTitle = menuItemTitle("Open Login Items Settings…")
-        menu.addItem(loginItemsItem)
+        loginItemItem.target = self
+        loginItemItem.attributedTitle = menuItemTitle("Open at Login")
+        // Read actual SMAppService status rather than trusting any
+        // cached/persisted flag, so this can't drift if the user
+        // toggled it from System Settings directly.
+        loginItemItem.state = loginItemIsRegistered() ? .on : .off
+        menu.addItem(loginItemItem)
         menu.addItem(NSMenuItem.separator())
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
@@ -480,10 +532,13 @@ final class StatusMenuController: NSObject {
         keypadEnterItem.state = remapKeypadEnter ? .on : .off
     }
 
-    @objc private func openLoginItemsSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
-            NSWorkspace.shared.open(url)
-        }
+    @objc private func toggleLoginItem() {
+        let enable = loginItemItem.state != .on
+        setLoginItemRegistered(enable)
+        // Reflect the actual resulting status: register()/unregister()
+        // can fail (e.g. user declines in the system prompt), so don't
+        // just assume the toggle succeeded.
+        loginItemItem.state = loginItemIsRegistered() ? .on : .off
     }
 
     @objc private func quit() {

@@ -73,9 +73,8 @@ for:
 * **Remap Keypad Enter** — off by default; see "How It Works" above.
 * **Pause / Resume** — temporarily disable the remap everywhere without
   quitting.
-* **Open Login Items Settings...** — jumps straight to System Settings'
-  Login Items page, where you can add EnterRemap so it starts
-  automatically at login.
+* **Open at Login** — toggles automatic startup at login, entirely from
+  the menu (no need to visit System Settings).
 * **Quit**.
 
 The icon itself shows status at a glance: gray-scale when running,

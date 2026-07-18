@@ -19,8 +19,8 @@
 set -e
 
 APP_NAME="EnterRemap"
-VERSION="1.6.0"
-BUILD_NUMBER="13"
+VERSION="1.6.1"
+BUILD_NUMBER="14"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$REPO_DIR/build"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
@@ -85,7 +85,7 @@ cat <<EOF > "$APP_DIR/Contents/Info.plist"
     <key>CFBundleVersion</key>
     <string>$BUILD_NUMBER</string>
     <key>LSMinimumSystemVersion</key>
-    <string>12.0</string>
+    <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
