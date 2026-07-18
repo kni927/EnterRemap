@@ -3,15 +3,24 @@
 # .app bundle (LSUIElement) and installs it to /Applications.
 #
 # Usage:
-#   ./build.sh                              ad-hoc signed, local install (default)
-#   ./build.sh release <keychain-profile>   Developer ID signed, notarized,
-#                                            stapled, and packaged as a
-#                                            distribution zip in build/
+#   ./build.sh                       ad-hoc signed, local install (default)
+#   ./build.sh release               Developer ID signed, notarized,
+#                                     stapled, and packaged as a
+#                                     distribution zip in build/
+#
+# Release mode notarizes via an App Store Connect API key (same method
+# as cooViewer), not a Keychain Profile. Provide:
+#   NOTARY_KEY_ID       App Store Connect API key ID
+#   NOTARY_ISSUER_ID    App Store Connect API issuer ID
+# as environment variables, or as the 2nd/3rd positional args to
+# `release`. The private key itself is expected at the standard
+# notarytool search path and is never read from or written to this repo:
+#   ~/.appstoreconnect/private_keys/AuthKey_<NOTARY_KEY_ID>.p8
 set -e
 
 APP_NAME="EnterRemap"
-VERSION="1.5.2"
-BUILD_NUMBER="12"
+VERSION="1.6.0"
+BUILD_NUMBER="13"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$REPO_DIR/build"
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
@@ -66,7 +75,7 @@ cat <<EOF > "$APP_DIR/Contents/Info.plist"
     <key>CFBundleIconFile</key>
     <string>$APP_NAME.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.local.enter-remap</string>
+    <string>com.kni.EnterRemap</string>
     <key>CFBundleName</key>
     <string>$APP_NAME</string>
     <key>CFBundlePackageType</key>
@@ -86,13 +95,19 @@ cat <<EOF > "$APP_DIR/Contents/Info.plist"
 EOF
 
 if [ "$MODE" = "release" ]; then
-    NOTARY_PROFILE="${2:-$NOTARY_KEYCHAIN_PROFILE}"
-    if [ -z "$NOTARY_PROFILE" ]; then
-        echo "ERROR: no notarization keychain profile given."
-        echo "Usage: ./build.sh release <keychain-profile-name>"
-        echo "(or set \$NOTARY_KEYCHAIN_PROFILE). Create one first with:"
-        echo "  xcrun notarytool store-credentials <name> \\"
-        echo "    --apple-id <apple-id> --team-id 87B58V226A --password <app-specific-password>"
+    NOTARY_KEY_ID="${2:-$NOTARY_KEY_ID}"
+    NOTARY_ISSUER_ID="${3:-$NOTARY_ISSUER_ID}"
+    NOTARY_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${NOTARY_KEY_ID}.p8"
+    if [ -z "$NOTARY_KEY_ID" ] || [ -z "$NOTARY_ISSUER_ID" ]; then
+        echo "ERROR: notarization requires an App Store Connect API key."
+        echo "Usage: ./build.sh release <key-id> <issuer-id>"
+        echo "(or set \$NOTARY_KEY_ID / \$NOTARY_ISSUER_ID). The private key must"
+        echo "already exist at:"
+        echo "  ~/.appstoreconnect/private_keys/AuthKey_<key-id>.p8"
+        exit 1
+    fi
+    if [ ! -f "$NOTARY_KEY_PATH" ]; then
+        echo "ERROR: API key file not found at $NOTARY_KEY_PATH"
         exit 1
     fi
 
@@ -100,10 +115,11 @@ if [ "$MODE" = "release" ]; then
     codesign --force --deep --options runtime --sign "$DEVELOPER_ID_IDENTITY" "$APP_DIR"
     codesign --verify --deep --strict "$APP_DIR"
 
-    echo "=== Step 6: Notarizing (profile: $NOTARY_PROFILE) ==="
+    echo "=== Step 6: Notarizing (key ID: $NOTARY_KEY_ID) ==="
     NOTARY_ZIP="$BUILD_DIR/${APP_NAME}-notarize.zip"
     ditto -c -k --keepParent "$APP_DIR" "$NOTARY_ZIP"
-    xcrun notarytool submit "$NOTARY_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun notarytool submit "$NOTARY_ZIP" \
+      --key "$NOTARY_KEY_PATH" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
     rm -f "$NOTARY_ZIP"
 
     echo "=== Step 7: Stapling notarization ticket ==="

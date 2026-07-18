@@ -11,7 +11,8 @@
 ## 特徴
 
 * メインキーボードの **Returnキー (`kVK_Return`)** をリマップ
-* **テンキーの Enterキー (`kVK_ANSI_KeypadEnter`)** は変更しません
+* **テンキーの Enterキー (`kVK_ANSI_KeypadEnter`)** は初期状態では変更しないが、
+  メニューバーから含める設定に切り替えられる
 * Apple日本語入力・Google日本語入力の両方に対応
 * Discord など、ReturnキーとEnterキーを区別しないアプリでも利用可能
 * 軽量な Swift 製メニューバーアプリ
@@ -20,16 +21,16 @@
 
 ## 動作について
 
-EnterRemap がリマップするのは、**メインキーボードの Returnキー (`kVK_Return`) のみ**です。
+初期状態でEnterRemapがリマップするのは、**メインキーボードの Returnキー (`kVK_Return`) のみ**です。
 
-| キー                                  | 動作                         |
-| ----------------------------------- | -------------------------- |
-| Return (`kVK_Return`)               | リマップされます                   |
-| テンキー Enter (`kVK_ANSI_KeypadEnter`) | 変更されません（アプリ本来の動作のまま。通常は送信） |
+| キー                                  | 動作                                          |
+| ----------------------------------- | ------------------------------------------- |
+| Return (`kVK_Return`)               | リマップされます                                     |
+| テンキー Enter (`kVK_ANSI_KeypadEnter`) | 初期状態では変更されません(アプリ本来の動作のまま。通常は送信)。設定で切り替え可能 |
 
-テンキーの Enterキーは意図的に変更していません。
-
-そのため、アプリ側の標準動作との互換性を維持したまま、メインキーボードの Returnキーだけを変更できます。
+メニューバーの **Remap Keypad Enter** をONにすると、テンキーのEnterも
+Returnキーと全く同じ判定ロジック(IME判定・テキストフィールド判定を含む)
+でリマップされる。
 
 ---
 
@@ -59,6 +60,13 @@ Chrome や Safari 上で動作する **Web版 ChatGPT** などは対象外です
 3. 起動
 4. アクセシビリティ権限を許可
 
+> **v1.5.2以前からのアップグレード**: アプリのbundle identifierが変更された
+> (`com.local.enter-remap` → `com.kni.EnterRemap`)。macOSはこれを別アプリと
+> 見なすため、アップグレード後は以下が必要:
+> アクセシビリティ権限の再付与、ログイン項目への再登録、
+> Target Appsの再設定(旧bundle ID時代の設定は引き継がれず、初回起動時の
+> デフォルトに戻る)。
+
 ---
 
 ## 使い方
@@ -69,7 +77,9 @@ EnterRemapはメニューバーの小さいアイコンとして常駐します(
 * **Target Apps** — リマップを適用するアプリのチェックリスト
   (Claude / ChatGPT / ChatGPT Classic / Geminiは初期状態ON。
   **Discordは初期状態OFF** — Discordでもリマップしたい場合はここで有効化する)。
-  「Add Custom App...」から任意のアプリをbundle IDで追加できる
+  「Add Custom App...」から、bundle IDの直接入力または`.app`ファイルの
+  ドラッグ&ドロップでアプリを追加できる
+* **Remap Keypad Enter** — 初期状態OFF。詳細は「動作について」を参照
 * **Pause / Resume** — 終了せずに一時的にリマップを無効化
 * **Open Login Items Settings...** — システム設定のログイン項目ページを
   直接開く。ここでEnterRemapを追加すればログイン時に自動起動する

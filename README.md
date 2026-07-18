@@ -9,21 +9,25 @@ This project is intended for **native macOS applications only**. If you use Chat
 ## Features
 
 * Remaps the main **Return** key (`kVK_Return`) for supported macOS applications
-* Leaves the keypad **Enter** key (`kVK_ANSI_KeypadEnter`) untouched
+* The keypad **Enter** key (`kVK_ANSI_KeypadEnter`) is left untouched by
+  default, but can be included in the remap from the menu bar
 * Compatible with both Apple Japanese Input and Google Japanese Input
 * Works with applications such as Discord that normally do not distinguish Return and Enter
 * Lightweight native Swift menu bar application
 
 ## How It Works
 
-EnterRemap intentionally remaps **only** the main keyboard **Return** key.
+By default EnterRemap remaps only the main keyboard **Return** key.
 
-| Key                                   | Behavior                                                 |
-| ------------------------------------- | -------------------------------------------------------- |
-| Return (`kVK_Return`)                 | Remapped                                                 |
-| Keypad Enter (`kVK_ANSI_KeypadEnter`) | Unchanged (application default behavior, typically Send) |
+| Key                                   | Behavior                                                              |
+| ------------------------------------- | ---------------------------------------------------------------------|
+| Return (`kVK_Return`)                 | Remapped                                                              |
+| Keypad Enter (`kVK_ANSI_KeypadEnter`) | Unchanged by default (application default, typically Send) — optional|
 
-Keeping the keypad Enter key unchanged allows applications to continue using their original behavior while changing only the main Return key.
+Turning on **Remap Keypad Enter** in the menu bar routes the keypad
+Enter key through the exact same logic as Return (including IME and
+text-field detection), so it behaves identically instead of falling
+back to each app's own default.
 
 ## Scope
 
@@ -49,6 +53,13 @@ For ChatGPT on the web, using a browser extension is recommended instead, for ex
 3. Launch the application.
 4. Grant Accessibility permission when prompted.
 
+> **Upgrading from v1.5.2 or earlier**: the app's bundle identifier
+> changed (`com.local.enter-remap` → `com.kni.EnterRemap`). macOS treats
+> this as a different app, so after upgrading you'll need to: re-grant
+> Accessibility permission, re-add EnterRemap to Login Items, and
+> reconfigure Target Apps (settings don't carry over from the old
+> identifier — they reset to the defaults on first launch).
+
 ## Usage
 
 EnterRemap runs as a small icon in the menu bar (no Dock icon). Click it
@@ -57,8 +68,9 @@ for:
 * **Target Apps** — a checklist of which apps the remap applies to
   (Claude, ChatGPT, ChatGPT Classic, and Gemini are on by default;
   **Discord is off by default** — enable it here if you want the remap
-  in Discord). "Add Custom App..." lets you add any other app by its
-  bundle identifier.
+  in Discord). "Add Custom App..." opens a small window where you can
+  type a bundle identifier or just drag the app's `.app` file onto it.
+* **Remap Keypad Enter** — off by default; see "How It Works" above.
 * **Pause / Resume** — temporarily disable the remap everywhere without
   quitting.
 * **Open Login Items Settings...** — jumps straight to System Settings'

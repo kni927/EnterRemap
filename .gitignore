@@ -13,6 +13,7 @@ DerivedData/
 # Secrets
 .env
 *.pem
+*.p8
 
 # Editor
 .vscode/

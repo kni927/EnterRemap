@@ -59,8 +59,23 @@ func saveCustomBundleIDs(_ ids: [String]) {
 var ALLOWED_BUNDLE_IDS: Set<String> = loadAllowedBundleIDs()
 
 let KEYCODE_ENTER: CGKeyCode = 36
+let KEYCODE_KEYPAD_ENTER: CGKeyCode = 76
 let KEYCODE_BACKSPACE: CGKeyCode = 51
 let KEYCODE_ESCAPE: CGKeyCode = 53
+
+// Off by default: KeypadEnter passes through untouched (app default,
+// usually send). Toggled from the menu; persisted so it survives restarts.
+let REMAP_KEYPAD_ENTER_KEY = "RemapKeypadEnter"
+
+func loadRemapKeypadEnter() -> Bool {
+    UserDefaults.standard.bool(forKey: REMAP_KEYPAD_ENTER_KEY)
+}
+
+func saveRemapKeypadEnter(_ value: Bool) {
+    UserDefaults.standard.set(value, forKey: REMAP_KEYPAD_ENTER_KEY)
+}
+
+var remapKeypadEnter: Bool = loadRemapKeypadEnter()
 
 // MARK: - IME composition detection
 // Layered check; see docs/2026-07-12-01-ime-detection-notes.md for the
@@ -207,14 +222,55 @@ func menuItemTitle(_ text: String) -> NSAttributedString {
     ])
 }
 
+// A drop target for .app bundles: extracts the bundle identifier via
+// Bundle(url:) and hands it to the caller instead of requiring the user
+// to already know (or go look up) the string.
+final class AppDropView: NSView {
+    var onDrop: ((String) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        return .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let url = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil)?.first as? URL,
+              let bundleID = Bundle(url: url)?.bundleIdentifier else { return false }
+        onDrop?(bundleID)
+        return true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.controlBackgroundColor.setFill()
+        dirtyRect.fill()
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6)
+        path.lineWidth = 1
+        NSColor.separatorColor.setStroke()
+        path.stroke()
+    }
+}
+
 // MARK: - Target apps submenu
 // Phase 8 replaces the standalone NSWindow with an NSMenu submenu:
-// one checkmark item per app, toggled in place on click, plus an
-// "Add Custom App..." item that prompts via NSAlert for anything
-// outside the presets. Writes straight through to ALLOWED_BUNDLE_IDS
-// and UserDefaults — no restart needed either way.
+// one checkmark item per app, toggled in place on click. Phase 10
+// replaces the NSAlert-based "Add Custom App..." prompt (which showed
+// Terminal commands for looking up a bundle ID) with a small window
+// offering a text field plus a drag-and-drop zone for the .app itself.
+// Writes straight through to ALLOWED_BUNDLE_IDS and UserDefaults — no
+// restart needed either way.
 final class TargetAppsMenuController: NSObject {
     let submenu = NSMenu()
+    private var addPanel: NSWindow?
+    private var addField: NSTextField?
 
     override init() {
         super.init()
@@ -260,26 +316,71 @@ final class TargetAppsMenuController: NSObject {
     }
 
     @objc private func promptAddCustomApp() {
-        let alert = NSAlert()
-        alert.messageText = "Add Custom App"
-        alert.informativeText = """
-            Enter the target app's bundle identifier.
+        if let panel = addPanel {
+            addField?.stringValue = ""
+            panel.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
 
-            To look it up, run one of these in Terminal:
-              mdls -name kMDItemCFBundleIdentifier /Applications/<AppName>.app
-              osascript -e 'id of app "<AppName>"'
-            """
-        alert.addButton(withTitle: "Add")
-        alert.addButton(withTitle: "Cancel")
-
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        let field = NSTextField()
         field.placeholderString = "com.example.app"
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
+        field.target = self
+        field.action = #selector(confirmAddCustomApp)
+        addField = field
 
+        let dropView = AppDropView(frame: NSRect(x: 0, y: 0, width: 288, height: 64))
+        dropView.onDrop = { [weak self] bundleID in
+            self?.addField?.stringValue = bundleID
+        }
+        let dropLabel = NSTextField(labelWithString: "Drop a .app here")
+        dropLabel.alignment = .center
+        dropLabel.textColor = .secondaryLabelColor
+        dropLabel.frame = dropView.bounds
+        dropLabel.autoresizingMask = [.width, .height]
+        dropView.addSubview(dropLabel)
+
+        let addButton = NSButton(frame: .zero)
+        addButton.title = "Add"
+        addButton.bezelStyle = .rounded
+        addButton.target = self
+        addButton.action = #selector(confirmAddCustomApp)
+
+        let cancelButton = NSButton(frame: .zero)
+        cancelButton.title = "Cancel"
+        cancelButton.bezelStyle = .rounded
+        cancelButton.target = self
+        cancelButton.action = #selector(cancelAddCustomApp)
+
+        let buttonRow = NSStackView(views: [cancelButton, addButton])
+        buttonRow.orientation = .horizontal
+        buttonRow.spacing = 8
+
+        let container = NSStackView(views: [field, dropView, buttonRow])
+        container.orientation = .vertical
+        container.alignment = .leading
+        container.spacing = 12
+        container.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        field.widthAnchor.constraint(equalToConstant: 288).isActive = true
+
+        let panel = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false)
+        panel.title = "Add Custom App"
+        panel.isReleasedWhenClosed = false
+        panel.contentView = container
+        panel.center()
+        addPanel = panel
+
+        panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        panel.makeFirstResponder(field)
+    }
 
+    @objc private func confirmAddCustomApp() {
+        guard let field = addField else { return }
         let bundleID = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !bundleID.isEmpty else { return }
 
@@ -290,9 +391,17 @@ final class TargetAppsMenuController: NSObject {
                 saveCustomBundleIDs(custom)
             }
         }
-        ALLOWED_BUNDLE_IDS.insert(bundleID) // newly typed = immediately enabled
+        ALLOWED_BUNDLE_IDS.insert(bundleID) // newly added = immediately enabled
         saveAllowedBundleIDs()
         rebuildSubmenu()
+
+        field.stringValue = ""
+        addPanel?.orderOut(nil)
+    }
+
+    @objc private func cancelAddCustomApp() {
+        addField?.stringValue = ""
+        addPanel?.orderOut(nil)
     }
 }
 
@@ -300,6 +409,7 @@ final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let stateItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "", action: #selector(togglePause), keyEquivalent: "")
+    private let keypadEnterItem = NSMenuItem(title: "", action: #selector(toggleRemapKeypadEnter), keyEquivalent: "")
     private let targetAppsController = TargetAppsMenuController()
 
     override init() {
@@ -312,6 +422,10 @@ final class StatusMenuController: NSObject {
         targetAppsItem.attributedTitle = menuItemTitle("Target Apps")
         targetAppsItem.submenu = targetAppsController.submenu
         menu.addItem(targetAppsItem)
+        keypadEnterItem.target = self
+        keypadEnterItem.attributedTitle = menuItemTitle("Remap Keypad Enter")
+        keypadEnterItem.state = remapKeypadEnter ? .on : .off
+        menu.addItem(keypadEnterItem)
         pauseItem.target = self
         menu.addItem(pauseItem)
         let loginItemsItem = NSMenuItem(title: "", action: #selector(openLoginItemsSettings), keyEquivalent: "")
@@ -358,6 +472,12 @@ final class StatusMenuController: NSObject {
         // pause boundary: prefer a fresh start over a guess either way.
         composingKeyCount = 0
         refresh()
+    }
+
+    @objc private func toggleRemapKeypadEnter() {
+        remapKeypadEnter.toggle()
+        saveRemapKeypadEnter(remapKeypadEnter)
+        keypadEnterItem.state = remapKeypadEnter ? .on : .off
     }
 
     @objc private func openLoginItemsSettings() {
@@ -421,7 +541,9 @@ func eventCallback(
     let isShift = flags.contains(.maskShift)
 
     // --- Remap path: Enter / Cmd+Enter ---
-    if keycode == KEYCODE_ENTER {
+    // When enabled, KeypadEnter runs through the exact same checks and
+    // transformation as the main Return key (IME/AXRole judgment included).
+    if keycode == KEYCODE_ENTER || (remapKeypadEnter && keycode == KEYCODE_KEYPAD_ENTER) {
         if isShift && !isCmd { return Unmanaged.passRetained(event) }
         // Single-line field (role unavailable = fall back to the existing
         // allowlist+IME logic below, e.g. Electron apps that don't expose it).
