@@ -243,72 +243,20 @@ func menuItemTitle(_ text: String) -> NSAttributedString {
     ])
 }
 
-// A drop target for .app bundles: extracts the bundle identifier via
-// Bundle(url:) and hands it to the caller instead of requiring the user
-// to already know (or go look up) the string.
-//
-// The prompt text is drawn directly in draw(_:) rather than added as a
-// subview: an earlier version overlaid a full-size NSTextField label on
-// top of this view, which silently ate the drop (drag destination
-// resolution goes to the topmost view under the cursor, and the label
-// wasn't registered for dragged types) — this was the root cause of
-// drag-and-drop never working. Keeping this view the only one in that
-// area sidesteps the issue entirely instead of relying on z-order.
-final class AppDropView: NSView {
-    var onDrop: ((String) -> Void)?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        registerForDraggedTypes([.fileURL])
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        registerForDraggedTypes([.fileURL])
-    }
-
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        return .copy
-    }
-
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let url = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil)?.first as? URL,
-              let bundleID = Bundle(url: url)?.bundleIdentifier else { return false }
-        onDrop?(bundleID)
-        return true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor.controlBackgroundColor.setFill()
-        dirtyRect.fill()
-
-        let text = "Drop a .app here"
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12),
-            .foregroundColor: NSColor.secondaryLabelColor,
-        ]
-        let size = text.size(withAttributes: attrs)
-        let origin = NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2)
-        text.draw(at: origin, withAttributes: attrs)
-        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6)
-        path.lineWidth = 1
-        NSColor.separatorColor.setStroke()
-        path.stroke()
-    }
-}
-
 // MARK: - Target apps submenu
-// Phase 8 replaces the standalone NSWindow with an NSMenu submenu:
-// one checkmark item per app, toggled in place on click. Phase 10
-// replaces the NSAlert-based "Add Custom App..." prompt (which showed
-// Terminal commands for looking up a bundle ID) with a small window
-// offering a text field plus a drag-and-drop zone for the .app itself.
-// Writes straight through to ALLOWED_BUNDLE_IDS and UserDefaults — no
-// restart needed either way.
+// An NSMenu submenu: one checkmark item per app, toggled in place on
+// click, plus an "Add Custom App..." item. Writes straight through to
+// ALLOWED_BUNDLE_IDS and UserDefaults — no restart needed.
+//
+// The Add prompt uses NSAlert (restored from the Phase 9 known-good
+// implementation). Phase 10 replaced it with a hand-built NSWindow to
+// add drag-and-drop, but that regressed text rendering (typed/dropped
+// text stored correctly yet never drawn), and an NSAlert variant that
+// bundled a drop view in its accessory regressed the same way. This
+// keeps the plain, proven NSAlert path; drag-and-drop is tracked
+// separately in docs/KNOWN_ISSUES.md.
 final class TargetAppsMenuController: NSObject {
     let submenu = NSMenu()
-    private var addPanel: NSWindow?
-    private var addField: NSTextField?
 
     override init() {
         super.init()
@@ -354,81 +302,26 @@ final class TargetAppsMenuController: NSObject {
     }
 
     @objc private func promptAddCustomApp() {
-        // Opening a window synchronously from a menu-item action can
-        // lose the key-window race against the menu's own closing
-        // animation; deferring to the next run-loop turn (after the
-        // menu has fully dismissed) makes activation reliable.
-        DispatchQueue.main.async { [weak self] in
-            self?.showAddCustomAppPanel()
-        }
-    }
+        let alert = NSAlert()
+        alert.messageText = "Add Custom App"
+        alert.informativeText = """
+            Enter the target app's bundle identifier.
 
-    private func showAddCustomAppPanel() {
-        if let panel = addPanel {
-            addField?.stringValue = ""
-            NSApp.activate(ignoringOtherApps: true)
-            panel.makeKeyAndOrderFront(nil)
-            panel.makeFirstResponder(addField)
-            return
-        }
+            To look it up, run one of these in Terminal:
+              mdls -name kMDItemCFBundleIdentifier /Applications/<AppName>.app
+              osascript -e 'id of app "<AppName>"'
+            """
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
 
-        let field = NSTextField()
-        field.placeholderString = "Input bundle identifier or drag and drop an app"
-        field.target = self
-        field.action = #selector(confirmAddCustomApp)
-        addField = field
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.placeholderString = "com.example.app"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
 
-        let dropView = AppDropView(frame: NSRect(x: 0, y: 0, width: 288, height: 64))
-        dropView.onDrop = { [weak self] bundleID in
-            self?.addField?.stringValue = bundleID
-        }
-
-        let addButton = NSButton(frame: .zero)
-        addButton.title = "Add"
-        addButton.bezelStyle = .rounded
-        addButton.target = self
-        addButton.action = #selector(confirmAddCustomApp)
-
-        let cancelButton = NSButton(frame: .zero)
-        cancelButton.title = "Cancel"
-        cancelButton.bezelStyle = .rounded
-        cancelButton.target = self
-        cancelButton.action = #selector(cancelAddCustomApp)
-
-        let buttonRow = NSStackView(views: [cancelButton, addButton])
-        buttonRow.orientation = .horizontal
-        buttonRow.spacing = 8
-
-        let container = NSStackView(views: [field, dropView, buttonRow])
-        container.orientation = .vertical
-        container.alignment = .leading
-        container.spacing = 12
-        container.edgeInsets = NSEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
-        field.widthAnchor.constraint(equalToConstant: 288).isActive = true
-
-        let panel = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false)
-        panel.title = "Add Custom App"
-        panel.isReleasedWhenClosed = false
-        panel.contentView = container
-        panel.center()
-        addPanel = panel
-
-        // Activate the app (bring it forward) before ordering the
-        // window front: for an .accessory-policy app, a window can end
-        // up visible-but-not-key if made key while the app itself isn't
-        // yet active, which left the text field unable to accept
-        // keyboard input.
         NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
-        panel.makeFirstResponder(field)
-    }
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-    @objc private func confirmAddCustomApp() {
-        guard let field = addField else { return }
         let bundleID = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !bundleID.isEmpty else { return }
 
@@ -439,17 +332,9 @@ final class TargetAppsMenuController: NSObject {
                 saveCustomBundleIDs(custom)
             }
         }
-        ALLOWED_BUNDLE_IDS.insert(bundleID) // newly added = immediately enabled
+        ALLOWED_BUNDLE_IDS.insert(bundleID) // newly typed = immediately enabled
         saveAllowedBundleIDs()
         rebuildSubmenu()
-
-        field.stringValue = ""
-        addPanel?.orderOut(nil)
-    }
-
-    @objc private func cancelAddCustomApp() {
-        addField?.stringValue = ""
-        addPanel?.orderOut(nil)
     }
 }
 
