@@ -1,34 +1,58 @@
 # CLAUDE.md
+@AGENTS.md
 
-This file guides Claude Code when working in this repository.
+## Commands
+- Build & install: `./build.sh` — compiles `main.swift`, creates
+  `build/EnterRemap.app` (LSUIElement), installs to `/Applications`.
+- Notarized release build: `./build.sh --notarize` with
+  `NOTARY_KEY_PATH` / `NOTARY_KEY_ID` / `NOTARY_ISSUER_ID` env vars
+  (App Store Connect API key method). Zip for distribution is created
+  after stapling.
+- No automated tests; verification is a successful build plus manual
+  checks in target apps (Enter / Cmd+Enter / Shift+Enter / IME confirm
+  Enter, with both Apple and Google Japanese Input).
 
-## Workflow
+## Project Conventions
 
-- Architecture and design decisions happen in chat (claude.ai), not here.
-- Implementation happens here, driven by `TASK.md` at the repo root.
-- `TASK.md` is a fixed filename. When a phase is complete, archive it to
-  `docs/tasks/` with a date-prefixed filename (e.g. `docs/tasks/2026-07-12-enter-remap-multiapp.md`)
-  before starting the next phase.
-- Prefer commit-per-task, with a build/test verification step before each commit.
-- Direct branch merges are fine for solo-developer work; PRs are not required
-  unless explicitly requested.
+- All in-app UI text (menu items, dialogs, status/log strings) is
+  English. Japanese appears only in `README-ja.md`.
+- The "do not modify README unless explicitly requested" rule in
+  AGENTS.md applies to both `README.md` and `README-ja.md`.
+- Install target: `/Applications` (admin account; no sudo required).
+- TCC caveat: accessibility permission is tied to the code-signing
+  identity. After a signature change (ad-hoc <-> Developer ID), the
+  permission must be re-granted manually (remove & re-add in System
+  Settings). Claude does not modify security settings; report and ask
+  the project owner instead.
+- Direct terminal execution of the binary makes the terminal the TCC
+  responsible process; use `open /Applications/EnterRemap.app` for
+  normal launch checks.
 
-## Conventions
+## Plan Mode
+- Use plan mode for multi-file changes or unfamiliar code paths.
+- Skip it for single-line/obvious fixes.
 
-- Write code comments and commit messages in English for token efficiency.
-- All in-app UI text (menu items, dialogs, status/log strings) is English,
-  now and for future phases. README is the only place Japanese appears
-  (as `README-ja.md`).
-- Install target: /Applications (admin account, so no sudo required).
-- Name files under `docs/` as `YYYY-MM-DD-NN-<slug>.md`, where NN is a
-  two-digit within-day sequence starting at 01.
-- Follow semantic versioning for tagged releases.
-- Keep a `dev-log.md` and `known-issues.md` if the project grows enough to
-  warrant tracking either.
+## Compact Instructions
 
-## Build & Test
+When compacting, preserve working state for continuation, not chat history.
 
-- `./build.sh` — compiles `main.swift`, creates `build/EnterRemap.app`
-  (LSUIElement, ad-hoc signed), and installs it to `/Applications`.
-- No automated tests; verification is a successful build plus manual checks
-  in the target apps (Enter / Cmd+Enter / Shift+Enter / IME confirm Enter).
+Always keep:
+- Current goal and acceptance criteria
+- Exact files changed, created, deleted, or inspected — and why
+- Important functions, classes, routes, settings, commands, config keys
+- Architectural / business rule decisions
+- Rejected approaches and why they were rejected
+- Errors, failed tests, commands run, and fixes attempted
+- Pending tasks and the exact next step
+
+Summarize:
+- Completed exploration
+- Older discussion
+- Repeated command output
+
+Drop:
+- Verbose logs unless they contain unresolved errors
+- Duplicate explanations
+- Abandoned ideas no longer relevant
+
+After compaction, re-read TASK.md (or the active task file in docs/tasks/) before continuing.

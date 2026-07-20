@@ -187,7 +187,7 @@ Google日本語入力 / Apple標準日本語入力それぞれで、対象アプ
 # Phase 4 追記: 通知機能の実装と検証状況(2026-07-12)
 
 IME判定ロジックとは独立した機能だが、実装時に判明した重要な制約として
-ここにも記録する(詳細は [known-issues.md](../known-issues.md))。
+ここにも記録する(詳細は [KNOWN_ISSUES.md](KNOWN_ISSUES.md))。
 
 UserNotifications frameworkによる異常終了通知を実装したが、開発機
 (macOS 26.5.1)では `UNUserNotificationCenter.requestAuthorization` が
