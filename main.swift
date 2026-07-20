@@ -243,6 +243,46 @@ func menuItemTitle(_ text: String) -> NSAttributedString {
     ])
 }
 
+// Catches .app drops for the Add Custom App field. Making the
+// NSTextField itself the drop target does not work — its field editor
+// intercepts the drop (draggingUpdated fires on the field, but
+// prepareForDragOperation/performDragOperation never do). Instead this
+// transparent overlay sits in front of the field: it receives the drop,
+// extracts the app's bundle id, and writes it into the field via
+// onDrop. hitTest returns nil so mouse clicks fall through to the field
+// (drag-destination hit-testing is independent of mouse hitTest, so the
+// overlay stays click-through while remaining droppable). Returning true
+// from performDragOperation consumes the drop, so NSTextField's default
+// "insert the raw path as text" behavior does not also run.
+final class DropOverlayView: NSView {
+    var onDrop: ((String) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { return nil }
+    override var acceptsFirstResponder: Bool { return false }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { return .copy }
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation { return .copy }
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { return true }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard let url = sender.draggingPasteboard.readObjects(
+                  forClasses: [NSURL.self], options: nil)?.first as? URL,
+              let bundleID = Bundle(url: url)?.bundleIdentifier else { return false }
+        onDrop?(bundleID)
+        return true
+    }
+}
+
 // MARK: - Target apps submenu
 // An NSMenu submenu: one checkmark item per app, toggled in place on
 // click, plus an "Add Custom App..." item. Writes straight through to
@@ -345,7 +385,18 @@ final class TargetAppsMenuController: NSObject {
 
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.placeholderString = "com.example.app"
-        alert.accessoryView = field
+
+        // Transparent overlay in front of the field to catch .app drops;
+        // it writes the extracted bundle id into the field.
+        let overlay = DropOverlayView(frame: field.bounds)
+        overlay.autoresizingMask = [.width, .height]
+        overlay.onDrop = { bundleID in field.stringValue = bundleID }
+
+        let container = NSView(frame: field.frame)
+        container.addSubview(field)
+        container.addSubview(overlay) // in front of the field
+
+        alert.accessoryView = container
         alert.window.initialFirstResponder = field
 
         NSApp.activate(ignoringOtherApps: true)
