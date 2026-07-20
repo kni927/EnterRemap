@@ -384,7 +384,10 @@ final class TargetAppsMenuController: NSObject {
         alert.addButton(withTitle: "Cancel")
 
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.placeholderString = "com.example.app"
+        // Single-line: this is a 24pt single-line field, so a multi-line
+        // placeholder (newlines) can't render here; one line conveys both
+        // input methods.
+        field.placeholderString = "Input Bundle Identifier or Drag and Drop App"
 
         // Transparent overlay in front of the field to catch .app drops;
         // it writes the extracted bundle id into the field.
