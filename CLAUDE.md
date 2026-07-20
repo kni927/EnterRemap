@@ -4,10 +4,13 @@
 ## Commands
 - Build & install: `./build.sh` — compiles `main.swift`, creates
   `build/EnterRemap.app` (LSUIElement), installs to `/Applications`.
-- Notarized release build: `./build.sh --notarize` with
-  `NOTARY_KEY_PATH` / `NOTARY_KEY_ID` / `NOTARY_ISSUER_ID` env vars
-  (App Store Connect API key method). Zip for distribution is created
-  after stapling.
+- Notarized release build: `./build.sh release <key-id> <issuer-id>`
+  (or set `NOTARY_KEY_ID` / `NOTARY_ISSUER_ID` env vars instead of the
+  positional args). Developer ID signed, notarized via the App Store
+  Connect API key method, stapled, and packaged as
+  `build/EnterRemap-v<version>.zip`. The API private key is read from a
+  fixed path derived from the key id (not passed on the command line):
+  `~/.appstoreconnect/private_keys/AuthKey_<key-id>.p8`.
 - No automated tests; verification is a successful build plus manual
   checks in target apps (Enter / Cmd+Enter / Shift+Enter / IME confirm
   Enter, with both Apple and Google Japanese Input).
