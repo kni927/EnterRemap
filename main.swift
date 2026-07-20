@@ -287,6 +287,27 @@ final class TargetAppsMenuController: NSObject {
         addItem.target = self
         addItem.attributedTitle = menuItemTitle("Add Custom App…")
         submenu.addItem(addItem)
+
+        // Presets can be toggled off but not removed; only user-added
+        // custom apps get a Remove entry. Kept as a separate submenu so
+        // it doesn't interfere with the click-to-toggle checkmark rows.
+        let customIDs = loadCustomBundleIDs().filter { id in
+            !PRESET_TARGET_APPS.contains { $0.bundleID == id }
+        }
+        if !customIDs.isEmpty {
+            let removeParent = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            removeParent.attributedTitle = menuItemTitle("Remove Custom App")
+            let removeMenu = NSMenu()
+            for id in customIDs {
+                let removeItem = NSMenuItem(title: "", action: #selector(removeCustomApp(_:)), keyEquivalent: "")
+                removeItem.target = self
+                removeItem.attributedTitle = menuItemTitle(id)
+                removeItem.identifier = NSUserInterfaceItemIdentifier(id)
+                removeMenu.addItem(removeItem)
+            }
+            removeParent.submenu = removeMenu
+            submenu.addItem(removeParent)
+        }
     }
 
     @objc private func toggleBundleID(_ sender: NSMenuItem) {
@@ -299,6 +320,14 @@ final class TargetAppsMenuController: NSObject {
             ALLOWED_BUNDLE_IDS.insert(bundleID)
         }
         saveAllowedBundleIDs()
+    }
+
+    @objc private func removeCustomApp(_ sender: NSMenuItem) {
+        guard let bundleID = sender.identifier?.rawValue else { return }
+        saveCustomBundleIDs(loadCustomBundleIDs().filter { $0 != bundleID })
+        ALLOWED_BUNDLE_IDS.remove(bundleID)
+        saveAllowedBundleIDs()
+        rebuildSubmenu()
     }
 
     @objc private func promptAddCustomApp() {
